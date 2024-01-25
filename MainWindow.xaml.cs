@@ -5,14 +5,18 @@ using System.Windows;
 public partial class MainWindow : Window
 {
     public MainWindow()
-    {
-        InitializeComponent();
+{
+    InitializeComponent();
 
-        MyWpfPage myWpfPage = new MyWpfPage();
-        myWpfPage.SomethingHappened += HandleSomethingHappened;
+    MyWpfPage myWpfPage = new MyWpfPage();
+    myWpfPage.SomethingHappened += HandleSomethingHappened;
 
-        MainFrame.Navigate(myWpfPage);
-    }
+    MainFrame.Navigate(myWpfPage);
+
+    WebView.NavigationCompleted += WebView_NavigationCompleted;
+    WebView.Source = new Uri("wwwroot/index.html", UriKind.Relative);
+}
+
 
     private void HandleSomethingHappened(object sender, EventArgs e)
     {
