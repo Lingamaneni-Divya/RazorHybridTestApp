@@ -1,0 +1,17 @@
+<!-- MyBlazorComponent.razor -->
+<h3>Blazor Component</h3>
+<button @onclick="OnButtonClick">Click Me</button>
+
+@code {
+    private void OnButtonClick()
+    {
+        // When the button is clicked, notify the WPF application
+        NotifyWpfApplication();
+    }
+
+    private async void NotifyWpfApplication()
+    {
+        // Use JS interop to raise an event in the WPF application
+        await JSRuntime.InvokeVoidAsync("interop.notifyWpfApplication");
+    }
+}
