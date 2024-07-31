@@ -1,3 +1,12 @@
+public class GraphApiResponse<T>
+{
+    [JsonPropertyName("value")]
+    public List<T> Value { get; set; }
+
+    [JsonPropertyName("@odata.nextLink")]
+    public string NextLink { get; set; }
+}
+
 public class GraphApiHelper
 {
     private readonly HttpService _httpService;
