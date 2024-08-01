@@ -1,39 +1,69 @@
-public class GraphApiResponse<T>
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+using System.Web;
+
+public class HttpService
 {
-    [JsonPropertyName("value")]
-    public List<T> Value { get; set; }
+    private readonly HttpClient _httpClient;
 
-    [JsonPropertyName("@odata.nextLink")]
-    public string NextLink { get; set; }
-}
-
-public class GraphApiHelper
-{
-    private readonly HttpService _httpService;
-
-    public GraphApiHelper(HttpService httpService)
+    public HttpService(HttpService httpClient)
     {
-        _httpService = httpService;
+        _httpClient = httpClient;
     }
 
-    public async Task<List<T>> GetAllDataAsync<T>(string baseUrl, Dictionary<string, string> parameters = null)
+    public async Task<string> GetAsync(string baseUrl, Dictionary<string, string> parameters = null)
     {
-        var allData = new List<T>();
-        string url = baseUrl;
+        var finalUrl = BuildUrlWithParameters(baseUrl, parameters);
 
-        while (!string.IsNullOrEmpty(url))
+        var response = await _httpClient.GetAsync(finalUrl);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    public async Task<string> PostAsync(string baseUrl, HttpContent content, Dictionary<string, string> parameters = null)
+    {
+        var finalUrl = BuildUrlWithParameters(baseUrl, parameters);
+
+        var response = await _httpClient.PostAsync(finalUrl, content);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    public async Task<string> PutAsync(string baseUrl, HttpContent content, Dictionary<string, string> parameters = null)
+    {
+        var finalUrl = BuildUrlWithParameters(baseUrl, parameters);
+
+        var response = await _httpClient.PutAsync(finalUrl, content);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    public async Task<string> DeleteAsync(string baseUrl, Dictionary<string, string> parameters = null)
+    {
+        var finalUrl = BuildUrlWithParameters(baseUrl, parameters);
+
+        var response = await _httpClient.DeleteAsync(finalUrl);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    private string BuildUrlWithParameters(string baseUrl, Dictionary<string, string> parameters)
+    {
+        var uriBuilder = new UriBuilder(baseUrl);
+        var query = HttpUtility.ParseQueryString(uriBuilder.Query);
+
+        if (parameters != null)
         {
-            string responseContent = await _httpService.GetAsync(url, parameters);
-            var apiResponse = JsonSerializer.Deserialize<GraphApiResponse<T>>(responseContent, new JsonSerializerOptions
+            foreach (var param in parameters)
             {
-                PropertyNameCaseInsensitive = true
-            });
-
-            allData.AddRange(apiResponse.Value);
-            url = apiResponse.NextLink;
-            parameters = null; // Clear parameters after the first request to avoid appending them again
+                query[param.Key] = param.Value;
+            }
         }
 
-        return allData;
+        uriBuilder.Query = query.ToString();
+        return uriBuilder.ToString();
     }
 }
