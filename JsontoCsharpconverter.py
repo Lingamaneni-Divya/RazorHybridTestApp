@@ -1,4 +1,4 @@
-# Version 2.0
+# Version 3.0
 
 import json
 
@@ -9,12 +9,14 @@ class ClassGenerator:
     def json_to_cs_class(self, json_obj, class_name):
         # Skip generating the class if it is already generated
         if class_name in self.generated_classes:
-            return ""
+            return
         
         lines = []
         lines.append(f"public class {class_name}")
         lines.append("{")
         
+        nested_class_defs = []
+
         for key, value in json_obj.items():
             if key.startswith('@'):
                 continue
@@ -22,12 +24,14 @@ class ClassGenerator:
             property_name = key[0].upper() + key[1:]
             lines.append(f"    public {csharp_type} {property_name} {{ get; set; }}")
             if nested_class_def:
-                lines.append(nested_class_def)
+                nested_class_defs.append(nested_class_def)
         
         lines.append("}")
         class_definition = "\n".join(lines)
         self.generated_classes[class_name] = class_definition
-        return class_definition
+        
+        for nested_class_def in nested_class_defs:
+            self.json_to_cs_class(nested_class_def[1], nested_class_def[0])
 
     def get_csharp_type(self, value, key):
         if isinstance(value, int):
@@ -41,15 +45,13 @@ class ClassGenerator:
                 list_type, nested_class_def = self.get_csharp_type(value[0], key)
                 if isinstance(value[0], dict):
                     # Generate a new class for the list item if it's a dictionary
-                    nested_class_def = self.json_to_cs_class(value[0], list_type)
+                    nested_class_def = (list_type, value[0])
                 return f"List<{list_type}>", nested_class_def
             else:
                 return "List<object>", None
         elif isinstance(value, dict):
             class_name = key[0].upper() + key[1:]
-            # Generate a class for nested dictionary if it is not already generated
-            nested_class_def = self.json_to_cs_class(value, class_name)
-            return class_name, nested_class_def
+            return class_name, (class_name, value)
         else:
             return "string", None
 
