@@ -1,10 +1,11 @@
 import json
-# version 4
+#version 5
 class ClassGenerator:
     def __init__(self):
         self.generated_classes = {}
 
     def json_to_cs_class(self, json_obj, class_name):
+        # Skip generating the class if it is already generated
         if class_name in self.generated_classes:
             return ""
         
@@ -37,12 +38,14 @@ class ClassGenerator:
             if value:
                 list_type, nested_class_def = self.get_csharp_type(value[0], key)
                 if isinstance(value[0], dict):
+                    # Generate a new class for the list item if it's a dictionary
                     nested_class_def = self.json_to_cs_class(value[0], list_type)
                 return f"List<{list_type}>", nested_class_def
             else:
                 return "List<object>", None
         elif isinstance(value, dict):
             class_name = key[0].upper() + key[1:]
+            # Generate a class for nested dictionary if it is not already generated
             nested_class_def = self.json_to_cs_class(value, class_name)
             return class_name, nested_class_def
         else:
@@ -58,7 +61,9 @@ class ClassGenerator:
                     # Handle array of nested JSON objects
                     root_class_def = f"public class {root_class_name}\n{{\n    public List<Root> Value {{ get; set; }}\n}}\n"
                     self.generated_classes[root_class_name] = root_class_def
-                    self.json_to_cs_class(json_obj['value'][0], "Root")
+                    # Generate classes for the items in the list
+                    if isinstance(json_obj['value'][0], dict):
+                        self.json_to_cs_class(json_obj['value'][0], "Root")
                 else:
                     # Handle array of simple JSON objects
                     root_class_def = f"public class {root_class_name}\n{{\n    public List<object> Value {{ get; set; }}\n}}\n"
@@ -67,6 +72,7 @@ class ClassGenerator:
                 # Handle single nested JSON object
                 root_class_def = f"public class {root_class_name}\n{{\n    public Root Value {{ get; set; }}\n}}\n"
                 self.generated_classes[root_class_name] = root_class_def
+                # Generate the class for the nested JSON object
                 self.json_to_cs_class(json_obj['value'], "Root")
             else:
                 # Handle simple JSON object
