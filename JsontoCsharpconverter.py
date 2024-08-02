@@ -1,5 +1,5 @@
 import json
-
+# version 3
 class ClassGenerator:
     def __init__(self):
         self.generated_classes = {}
