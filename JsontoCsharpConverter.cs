@@ -1,113 +1,74 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using Newtonsoft.Json.Linq;
+import json
 
-public class JsonToCSharpConverter
-{
-    private readonly HashSet<string> _definedClasses = new HashSet<string>();
+class ClassGenerator:
+    def __init__(self):
+        self.generated_classes = {}
 
-    public void ConvertJsonToCSharp(string json, string outputPath)
-    {
-        var jObject = JObject.Parse(json);
-        var classes = GenerateClasses(jObject, "Root");
-        File.WriteAllText(outputPath, classes);
-    }
+    def json_to_cs_class(self, json_obj, class_name):
+        if class_name in self.generated_classes:
+            return ""
+        
+        lines = []
+        lines.append(f"public class {class_name}")
+        lines.append("{")
+        
+        for key, value in json_obj.items():
+            if key.startswith('@'):
+                continue
+            csharp_type, nested_class_def = self.get_csharp_type(value, key)
+            property_name = key[0].upper() + key[1:]
+            lines.append(f"    public {csharp_type} {property_name} {{ get; set; }}")
+            if nested_class_def:
+                lines.append(nested_class_def)
+        
+        lines.append("}")
+        class_definition = "\n".join(lines)
+        self.generated_classes[class_name] = class_definition
+        return class_definition
 
-    private string GenerateClasses(JObject jObject, string className)
-    {
-        var classDefinitions = new List<string>();
+    def get_csharp_type(self, value, key):
+        if isinstance(value, int):
+            return "int", None
+        elif isinstance(value, float):
+            return "double", None
+        elif isinstance(value, bool):
+            return "bool", None
+        elif isinstance(value, list):
+            if value:
+                list_type, nested_class_def = self.get_csharp_type(value[0], key)
+                return f"List<{list_type}>", nested_class_def
+            else:
+                return "List<object>", None
+        elif isinstance(value, dict):
+            class_name = key[0].upper() + key[1:]
+            nested_class_def = self.json_to_cs_class(value, class_name)
+            return class_name, nested_class_def
+        else:
+            return "string", None
 
-        GenerateClass(jObject, className, classDefinitions);
+    def convert_json_file_to_cs(self, json_file_path, cs_file_path, class_name):
+        with open(json_file_path, 'r') as json_file:
+            json_obj = json.load(json_file)
+        
+        cs_classes = ""
+        if isinstance(json_obj, list):
+            cs_classes += self.json_to_cs_class(json_obj[0], class_name)
+        elif 'value' in json_obj:
+            for item in json_obj['value']:
+                cs_classes += self.json_to_cs_class(item, class_name)
+        else:
+            cs_classes += self.json_to_cs_class(json_obj, class_name)
+        
+        with open(cs_file_path, 'w') as cs_file:
+            for class_def in self.generated_classes.values():
+                cs_file.write(class_def + "\n\n")
+        
+        print(f"C# class definition saved to {cs_file_path}")
 
-        return string.Join("\n\n", classDefinitions);
-    }
+# Example usage
+json_file_path = "input.json"  # Path to your JSON file
+cs_file_path = "OutputClass.cs"  # Desired path for the generated C# class file
+class_name = "RootClass"  # Desired root class name
 
-    private void GenerateClass(JObject jObject, string className, List<string> classDefinitions)
-    {
-        if (_definedClasses.Contains(className))
-        {
-            return;
-        }
-
-        _definedClasses.Add(className);
-
-        var properties = new List<string>();
-
-        foreach (var property in jObject.Properties())
-        {
-            var propertyName = property.Name;
-            var propertyType = GetCSharpType(property.Value, propertyName, classDefinitions);
-
-            properties.Add($"    public {propertyType} {propertyName} {{ get; set; }}");
-        }
-
-        var classDefinition = $"public class {className}\n{{\n{string.Join("\n", properties)}\n}}";
-        classDefinitions.Add(classDefinition);
-    }
-
-    private string GetCSharpType(JToken token, string propertyName, List<string> classDefinitions)
-    {
-        switch (token.Type)
-        {
-            case JTokenType.Object:
-                var className = propertyName.Substring(0, 1).ToUpper() + propertyName.Substring(1);
-                GenerateClass((JObject)token, className, classDefinitions);
-                return className;
-
-            case JTokenType.Array:
-                var array = (JArray)token;
-                if (array.Count > 0)
-                {
-                    var arrayType = GetCSharpType(array[0], propertyName, classDefinitions);
-                    return $"List<{arrayType}>";
-                }
-                return "List<object>";
-
-            case JTokenType.Integer:
-                return "int";
-
-            case JTokenType.Float:
-                return "double";
-
-            case JTokenType.String:
-                return "string";
-
-            case JTokenType.Boolean:
-                return "bool";
-
-            case JTokenType.Date:
-                return "DateTime";
-
-            case JTokenType.Null:
-                return "object";
-
-            default:
-                return "string";
-        }
-    }
-}
-
-class Program
-{
-    static void Main(string[] args)
-    {
-        var json = @"{
-            'id': '1',
-            'name': 'Device1',
-            'details': {
-                'manufacturer': 'ABC Corp',
-                'model': 'XYZ123',
-                'specs': {
-                    'processor': 'Intel i7',
-                    'ram': '16GB',
-                    'storage': '512GB'
-                }
-            },
-            'status': 'Active'
-        }";
-
-        var converter = new JsonToCSharpConverter();
-        converter.ConvertJsonToCSharp(json, "output.cs");
-    }
-}
+generator = ClassGenerator()
+generator.convert_json_file_to_cs(json_file_path, cs_file_path, class_name)
