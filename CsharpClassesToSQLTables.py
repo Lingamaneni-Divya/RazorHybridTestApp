@@ -8,7 +8,7 @@ def parse_csharp_file(file_path):
     current_class = None
 
     class_pattern = re.compile(r'\bclass\b\s+(\w+)')
-    property_pattern = re.compile(r'\bpublic\b\s+(\w+)\s+(\w+)\s*{')
+    property_pattern = re.compile(r'\bpublic\b\s+(\w+)(\?)?\s+(\w+)\s*{')
 
     for line in lines:
         class_match = class_pattern.search(line)
@@ -21,7 +21,7 @@ def parse_csharp_file(file_path):
             property_match = property_pattern.search(line)
             if property_match:
                 prop_type = property_match.group(1)
-                prop_name = property_match.group(2)
+                prop_name = property_match.group(3)
                 classes[current_class].append((prop_name, prop_type))
 
     return classes
