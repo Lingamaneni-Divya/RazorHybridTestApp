@@ -1,6 +1,6 @@
 import re
 
-# Version 1.3 - Improved handling of nullable types and lists/arrays
+# Version 1.4 - Updated to handle lists/arrays and nullable types
 def parse_csharp_file(file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
@@ -9,7 +9,7 @@ def parse_csharp_file(file_path):
     current_class = None
 
     class_pattern = re.compile(r'\bclass\b\s+(\w+)')
-    property_pattern = re.compile(r'\bpublic\b\s+(required\s+)?(\w+(\[\])?|List<\w+>|IEnumerable<\w+>|ICollection<\w+>)\s+(\w+)\s*{')
+    property_pattern = re.compile(r'\b(public|required)?\s+(\w+(\[\])?|List<\w+>|IEnumerable<\w+>|ICollection<\w+>)\s+(\w+)\s*{')
 
     for line in lines:
         class_match = class_pattern.search(line)
@@ -24,7 +24,7 @@ def parse_csharp_file(file_path):
                 required = 'required' in match[0]
                 prop_type = match[1]
                 prop_name = match[3]
-                # Check if property type is a list or array
+                # Handle lists/arrays
                 if 'List' in prop_type or 'IEnumerable' in prop_type or 'ICollection' in prop_type or '[]' in prop_type:
                     prop_type = 'List'  # Use a common identifier for lists
                 classes[current_class].append((prop_name, prop_type, required))
