@@ -1,5 +1,6 @@
 import re
-#version 4.2
+
+# Version 1.0 - Updated script to handle required fields and arrays/lists
 def parse_csharp_file(file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
@@ -8,7 +9,7 @@ def parse_csharp_file(file_path):
     current_class = None
 
     class_pattern = re.compile(r'\bclass\b\s+(\w+)')
-    property_pattern = re.compile(r'\b(public|required)\s+(\w+(\[\])?|List<\w+>|IEnumerable<\w+>|ICollection<\w+>)\s+(\w+)\s*{')
+    property_pattern = re.compile(r'\bpublic\b\s+(required\s+)?(\w+(\[\])?|List<\w+>|IEnumerable<\w+>|ICollection<\w+>)\s+(\w+)\s*{')
 
     for line in lines:
         class_match = class_pattern.search(line)
