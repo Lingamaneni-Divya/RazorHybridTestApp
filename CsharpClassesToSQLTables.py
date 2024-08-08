@@ -1,7 +1,6 @@
-
-#version 4.0
 import re
 
+# version 4.1
 def parse_csharp_file(file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
@@ -29,7 +28,7 @@ def parse_csharp_file(file_path):
 
     return classes
 
-def map_csharp_to_sql(csharp_type, required):
+def map_csharp_to_sql(prop_name, csharp_type, required):
     type_mapping = {
         'int': 'INT',
         'long': 'BIGINT',
@@ -40,22 +39,22 @@ def map_csharp_to_sql(csharp_type, required):
         'string': 'VARCHAR(256)',
         'DateTime': 'DATETIME'
     }
-    if 'List' in csharp_type or 'IEnumerable' in csharp_type or 'ICollection' in csharp_type:
-        return 'VARCHAR(MAX)'
-    sql_type = type_mapping.get(csharp_type, 'VARCHAR(256)')  # Default to VARCHAR(256) for unknown types
+    if 'List' in csharp_type or 'IEnumerable' in csharp_type or 'ICollection' in csharp_type or '[]' in csharp_type:
+        sql_type = 'VARCHAR(MAX)'
+    else:
+        sql_type = type_mapping.get(csharp_type, 'VARCHAR(256)')  # Default to VARCHAR(256) for unknown types
+    
     if required:
         sql_type += ' NOT NULL'
-    return sql_type
+    
+    return f'    {prop_name} {sql_type}'
 
-def generate_sql_create_table_scripts(classes):
+def generate_sql_create_table_scripts(classes, schema_name):
     sql_scripts = []
 
     for class_name, properties in classes.items():
-        sql = f'CREATE TABLE {class_name} (\n'
-        columns = []
-        for prop_name, prop_type, required in properties:
-            sql_type = map_csharp_to_sql(prop_type, required)
-            columns.append(f'    {prop_name} {sql_type}')
+        sql = f'CREATE TABLE {schema_name}.{class_name} (\n'
+        columns = [map_csharp_to_sql(prop_name, prop_type, required) for prop_name, prop_type, required in properties]
         sql += ',\n'.join(columns)
         sql += '\n);'
         sql_scripts.append(sql)
@@ -65,8 +64,9 @@ def generate_sql_create_table_scripts(classes):
 # Example usage:
 file_path = 'classes.cs'
 output_file_path = 'create_tables.sql'
+schema_name = 'IntuneMobilityViolence'
 classes = parse_csharp_file(file_path)
-sql_scripts = generate_sql_create_table_scripts(classes)
+sql_scripts = generate_sql_create_table_scripts(classes, schema_name)
 
 # Write the SQL scripts to a file
 with open(output_file_path, 'w') as file:
