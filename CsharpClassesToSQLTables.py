@@ -1,6 +1,6 @@
 import re
 
-# Version 1.2 - Fixed handling of nullable types and lists/arrays
+# Version 1.3 - Improved handling of nullable types and lists/arrays
 def parse_csharp_file(file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
@@ -9,7 +9,7 @@ def parse_csharp_file(file_path):
     current_class = None
 
     class_pattern = re.compile(r'\bclass\b\s+(\w+)')
-    property_pattern = re.compile(r'\bpublic\s+(required\s+)?(\w+(\[\])?|List<\w+>|IEnumerable<\w+>|ICollection<\w+>)\s+(\w+)\s*{')
+    property_pattern = re.compile(r'\bpublic\b\s+(required\s+)?(\w+(\[\])?|List<\w+>|IEnumerable<\w+>|ICollection<\w+>)\s+(\w+)\s*{')
 
     for line in lines:
         class_match = class_pattern.search(line)
