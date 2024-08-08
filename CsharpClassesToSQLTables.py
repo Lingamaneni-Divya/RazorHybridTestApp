@@ -1,6 +1,6 @@
 import re
 
-# Version 1.0 - Updated script to handle required fields and arrays/lists
+# Version 1.1 - Refined script to handle nullable types and lists/arrays correctly
 def parse_csharp_file(file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
@@ -9,7 +9,7 @@ def parse_csharp_file(file_path):
     current_class = None
 
     class_pattern = re.compile(r'\bclass\b\s+(\w+)')
-    property_pattern = re.compile(r'\bpublic\b\s+(required\s+)?(\w+(\[\])?|List<\w+>|IEnumerable<\w+>|ICollection<\w+>)\s+(\w+)\s*{')
+    property_pattern = re.compile(r'\b(public|required)\s+(\w+(\[\])?|List<\w+>|IEnumerable<\w+>|ICollection<\w+>)\s+(\w+)\s*{')
 
     for line in lines:
         class_match = class_pattern.search(line)
@@ -24,6 +24,9 @@ def parse_csharp_file(file_path):
                 required = 'required' in match[0]
                 prop_type = match[1]
                 prop_name = match[3]
+                # Check if property type is a list or array
+                if 'List' in prop_type or 'IEnumerable' in prop_type or 'ICollection' in prop_type or '[]' in prop_type:
+                    prop_type = 'List'  # Use a common identifier for lists
                 classes[current_class].append((prop_name, prop_type, required))
 
     return classes
@@ -39,7 +42,7 @@ def map_csharp_to_sql(prop_name, csharp_type, required):
         'string': 'VARCHAR(256)',
         'DateTime': 'DATETIME'
     }
-    if 'List' in csharp_type or 'IEnumerable' in csharp_type or 'ICollection' in csharp_type or '[]' in csharp_type:
+    if csharp_type == 'List':
         sql_type = 'VARCHAR(MAX)'
     else:
         sql_type = type_mapping.get(csharp_type, 'VARCHAR(256)')  # Default to VARCHAR(256) for unknown types
