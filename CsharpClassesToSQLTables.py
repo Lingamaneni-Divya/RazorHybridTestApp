@@ -58,10 +58,11 @@ def generate_sql_create_table_scripts(classes):
 
 # Example usage:
 file_path = 'classes.cs'
+output_file_path = 'create_tables.sql'
 classes = parse_csharp_file(file_path)
 sql_scripts = generate_sql_create_table_scripts(classes)
 
-# Print only the script for the Customer class
-for script in sql_scripts:
-    if 'Customer' in script:
-        print(script)
+# Write the SQL scripts to a file
+with open(output_file_path, 'w') as file:
+    for script in sql_scripts:
+        file.write(script + '\n')
