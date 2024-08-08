@@ -1,4 +1,5 @@
-# version 3.9
+
+#version 4.0
 import re
 
 def parse_csharp_file(file_path):
@@ -9,7 +10,7 @@ def parse_csharp_file(file_path):
     current_class = None
 
     class_pattern = re.compile(r'\bclass\b\s+(\w+)')
-    property_pattern = re.compile(r'\bpublic\b\s+(\w+)(\?)?\s+(\w+)\s*{')
+    property_pattern = re.compile(r'\b(public|required)\s+(\w+)(\?)?\s+(\w+)\s*{')
 
     for line in lines:
         class_match = class_pattern.search(line)
@@ -19,15 +20,16 @@ def parse_csharp_file(file_path):
             continue
         
         if current_class:
-            property_match = property_pattern.search(line)
-            if property_match:
-                prop_type = property_match.group(1)
-                prop_name = property_match.group(3)
-                classes[current_class].append((prop_name, prop_type))
+            property_match = property_pattern.findall(line)
+            for match in property_match:
+                required = 'required' in match[0]
+                prop_type = match[1]
+                prop_name = match[3]
+                classes[current_class].append((prop_name, prop_type, required))
 
     return classes
 
-def map_csharp_to_sql(csharp_type):
+def map_csharp_to_sql(csharp_type, required):
     type_mapping = {
         'int': 'INT',
         'long': 'BIGINT',
@@ -40,7 +42,10 @@ def map_csharp_to_sql(csharp_type):
     }
     if 'List' in csharp_type or 'IEnumerable' in csharp_type or 'ICollection' in csharp_type:
         return 'VARCHAR(MAX)'
-    return type_mapping.get(csharp_type, 'VARCHAR(256)')  # Default to VARCHAR(256) for unknown types
+    sql_type = type_mapping.get(csharp_type, 'VARCHAR(256)')  # Default to VARCHAR(256) for unknown types
+    if required:
+        sql_type += ' NOT NULL'
+    return sql_type
 
 def generate_sql_create_table_scripts(classes):
     sql_scripts = []
@@ -48,8 +53,8 @@ def generate_sql_create_table_scripts(classes):
     for class_name, properties in classes.items():
         sql = f'CREATE TABLE {class_name} (\n'
         columns = []
-        for prop_name, prop_type in properties:
-            sql_type = map_csharp_to_sql(prop_type)
+        for prop_name, prop_type, required in properties:
+            sql_type = map_csharp_to_sql(prop_type, required)
             columns.append(f'    {prop_name} {sql_type}')
         sql += ',\n'.join(columns)
         sql += '\n);'
