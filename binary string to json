@@ -1,0 +1,17 @@
+import base64
+import json
+
+# Example base64-encoded binary string representing a JSON object
+binary_string = "eyJrZXkiOiAiVmFsdWUifQ=="
+
+# Step 1: Convert base64-encoded string to byte array
+byte_array = base64.b64decode(binary_string)
+
+# Step 2: Convert byte array to JSON string
+json_string = byte_array.decode('utf-8')
+
+# Step 3: Parse JSON string into a Python dictionary
+json_object = json.loads(json_string)
+
+# Output the resulting JSON object
+print(json_object)  # Output: {'key': 'Value'}
