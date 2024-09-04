@@ -1,0 +1,48 @@
+public async Task<IEnumerable<T>> ExecuteQueryAsync<T>(string query, CommandType commandType, Dictionary<string, object> parameters = null) where T : new()
+{
+    List<T> results = new List<T>();
+
+    try
+    {
+        using (SqlConnection connection = new SqlConnection(dbConnectionBuilder.ConnectionString))
+        {
+            await connection.OpenAsync();
+
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                command.CommandType = commandType;
+
+                if (parameters != null)
+                {
+                    foreach (var param in parameters)
+                    {
+                        command.Parameters.AddWithValue(param.Key, param.Value ?? DBNull.Value);
+                    }
+                }
+
+                using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        T obj = new T();
+                        foreach (var prop in typeof(T).GetProperties())
+                        {
+                            if (reader.HasRows && !reader.IsDBNull(reader.GetOrdinal(prop.Name)))
+                            {
+                                prop.SetValue(obj, reader[prop.Name]);
+                            }
+                        }
+                        results.Add(obj);
+                    }
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        // Handle the exception as required
+        throw new InvalidOperationException("An error occurred while executing the query.", ex);
+    }
+
+    return results;
+}
