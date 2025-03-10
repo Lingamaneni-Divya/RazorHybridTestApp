@@ -1,91 +1,129 @@
-using Xunit;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Reflection;
+using Xunit;
 
-public class BatchServiceTests
+public class GenericEqualityComparerTests
 {
-    [Fact]
-    public void Batch_ShouldSplitListIntoCorrectSizedBatches()
+    private class TestClass
     {
-        // Arrange
-        var numbers = Enumerable.Range(1, 10); // [1,2,3,4,5,6,7,8,9,10]
-        int batchSize = 3;
-
-        // Act
-        var result = numbers.Batch(batchSize).ToList();
-
-        // Assert
-        Assert.Equal(4, result.Count); // 10 elements should be split into 4 batches: [1,2,3], [4,5,6], [7,8,9], [10]
-        Assert.Equal(new List<int> { 1, 2, 3 }, result[0]);
-        Assert.Equal(new List<int> { 4, 5, 6 }, result[1]);
-        Assert.Equal(new List<int> { 7, 8, 9 }, result[2]);
-        Assert.Equal(new List<int> { 10 }, result[3]); // Last batch has only 1 element
+        public int Id { get; set; }
+        public string Name { get; set; }
     }
 
     [Fact]
-    public void Batch_ShouldHandleExactBatchSize()
+    public void Equals_ShouldReturnTrue_WhenObjectsHaveSameValues()
     {
-        // Arrange
-        var numbers = new List<int> { 1, 2, 3, 4 };
-        int batchSize = 2;
+        var comparer = new GenericEqualityComparer<TestClass>();
 
-        // Act
-        var result = numbers.Batch(batchSize).ToList();
+        var obj1 = new TestClass { Id = 1, Name = "Alice" };
+        var obj2 = new TestClass { Id = 1, Name = "Alice" };
 
-        // Assert
-        Assert.Equal(2, result.Count); // Should split into two batches: [1,2], [3,4]
-        Assert.Equal(new List<int> { 1, 2 }, result[0]);
-        Assert.Equal(new List<int> { 3, 4 }, result[1]);
+        bool result = comparer.Equals(obj1, obj2);
+
+        Assert.True(result);
     }
 
     [Fact]
-    public void Batch_ShouldHandleSingleElement()
+    public void Equals_ShouldReturnFalse_WhenObjectsHaveDifferentValues()
     {
-        // Arrange
-        var numbers = new List<int> { 5 };
-        int batchSize = 3;
+        var comparer = new GenericEqualityComparer<TestClass>();
 
-        // Act
-        var result = numbers.Batch(batchSize).ToList();
+        var obj1 = new TestClass { Id = 1, Name = "Alice" };
+        var obj2 = new TestClass { Id = 2, Name = "Bob" };
 
-        // Assert
-        Assert.Single(result);
-        Assert.Equal(new List<int> { 5 }, result[0]);
+        bool result = comparer.Equals(obj1, obj2);
+
+        Assert.False(result);
     }
 
     [Fact]
-    public void Batch_ShouldReturnEmpty_WhenSourceIsEmpty()
+    public void Equals_ShouldReturnFalse_WhenOneObjectIsNull()
     {
-        // Arrange
-        var numbers = new List<int>();
-        int batchSize = 3;
+        var comparer = new GenericEqualityComparer<TestClass>();
 
-        // Act
-        var result = numbers.Batch(batchSize).ToList();
+        var obj1 = new TestClass { Id = 1, Name = "Alice" };
 
-        // Assert
-        Assert.Empty(result);
+        bool result = comparer.Equals(obj1, null);
+
+        Assert.False(result);
     }
 
     [Fact]
-    public void Batch_ShouldThrowException_WhenBatchSizeIsZeroOrNegative()
+    public void Equals_ShouldReturnFalse_WhenBothObjectsAreNull()
     {
-        // Arrange
-        var numbers = Enumerable.Range(1, 5);
+        var comparer = new GenericEqualityComparer<TestClass>();
 
-        // Act & Assert
-        Assert.Throws<ArgumentException>(() => numbers.Batch(0).ToList());
-        Assert.Throws<ArgumentException>(() => numbers.Batch(-1).ToList());
+        bool result = comparer.Equals(null, null);
+
+        Assert.False(result);
     }
 
     [Fact]
-    public void Batch_ShouldThrowException_WhenSourceIsNull()
+    public void GetHashCode_ShouldReturnSameValue_ForEqualObjects()
     {
-        // Arrange
-        IEnumerable<int> numbers = null;
+        var comparer = new GenericEqualityComparer<TestClass>();
 
-        // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => numbers.Batch(3).ToList());
+        var obj1 = new TestClass { Id = 1, Name = "Alice" };
+        var obj2 = new TestClass { Id = 1, Name = "Alice" };
+
+        int hash1 = comparer.GetHashCode(obj1);
+        int hash2 = comparer.GetHashCode(obj2);
+
+        Assert.Equal(hash1, hash2);
+    }
+
+    [Fact]
+    public void GetHashCode_ShouldReturnDifferentValue_ForDifferentObjects()
+    {
+        var comparer = new GenericEqualityComparer<TestClass>();
+
+        var obj1 = new TestClass { Id = 1, Name = "Alice" };
+        var obj2 = new TestClass { Id = 2, Name = "Bob" };
+
+        int hash1 = comparer.GetHashCode(obj1);
+        int hash2 = comparer.GetHashCode(obj2);
+
+        Assert.NotEqual(hash1, hash2);
+    }
+}
+
+using System.Collections.Generic;
+using System.Linq;
+using Xunit;
+
+public class DistinctHelperTests
+{
+    private class TestClass
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+
+    [Fact]
+    public void Distinct_ShouldReturnUniqueObjects_BasedOnProperties()
+    {
+        var items = new List<TestClass>
+        {
+            new TestClass { Id = 1, Name = "Alice" },
+            new TestClass { Id = 1, Name = "Alice" }, // Duplicate
+            new TestClass { Id = 2, Name = "Bob" }
+        };
+
+        var distinctItems = items.Distinct().ToList();
+
+        Assert.Equal(2, distinctItems.Count);
+        Assert.Contains(distinctItems, x => x.Id == 1 && x.Name == "Alice");
+        Assert.Contains(distinctItems, x => x.Id == 2 && x.Name == "Bob");
+    }
+
+    [Fact]
+    public void Distinct_ShouldReturnEmptyList_WhenSourceIsEmpty()
+    {
+        var items = new List<TestClass>();
+
+        var distinctItems = items.Distinct().ToList();
+
+        Assert.Empty(distinctItems);
     }
 }
