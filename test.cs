@@ -1,10 +1,10 @@
 using IntuneMobilityViolationJob.Repository.Command.BaseRepository;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Data.SqlClient;
 using Moq;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -12,45 +12,38 @@ public class CommandRepositoryTests
 {
     private readonly CommandRepository _repository;
     private readonly Mock<IConfiguration> _mockConfiguration;
-    private readonly Mock<SqlConnection> _mockConnection;
-    private readonly Mock<SqlCommand> _mockCommand;
-    private readonly Mock<SqlTransaction> _mockTransaction;
+    private readonly Mock<DbConnection> _mockConnection;
+    private readonly Mock<DbCommand> _mockCommand;
+    private readonly Mock<DbTransaction> _mockTransaction;
 
     public CommandRepositoryTests()
     {
         _mockConfiguration = new Mock<IConfiguration>();
         _mockConfiguration.Setup(config => config["ConnectionStrings:MobilityViolationDB"]).Returns("Fake_Connection_String");
 
-        _mockConnection = new Mock<SqlConnection>();
-        _mockCommand = new Mock<SqlCommand>();
-        _mockTransaction = new Mock<SqlTransaction>();
+        _mockConnection = new Mock<DbConnection>();
+        _mockCommand = new Mock<DbCommand>();
+        _mockTransaction = new Mock<DbTransaction>();
 
         _repository = new CommandRepository(_mockConfiguration.Object);
     }
 
     private void SetupMocks(bool throwException = false)
     {
+        // Simulate Opening Connection
         _mockConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
         _mockConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-        
+        _mockCommand.Setup(c => c.Connection).Returns(_mockConnection.Object);
+        _mockCommand.Setup(c => c.Transaction).Returns(_mockTransaction.Object);
+
         if (throwException)
         {
-            _mockCommand.Setup(c => c.ExecuteNonQueryAsync()).ThrowsAsync(CreateSqlException());
+            _mockCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ThrowsAsync(new Exception("SQL Error"));
         }
         else
         {
-            _mockCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(1);
+            _mockCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ReturnsAsync(1);
         }
-    }
-
-    private SqlException CreateSqlException()
-    {
-        var sqlErrorCollection = (SqlErrorCollection)Activator.CreateInstance(typeof(SqlErrorCollection), true);
-        var sqlError = (SqlError)Activator.CreateInstance(typeof(SqlError), true);
-        typeof(SqlErrorCollection).GetMethod("Add", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(sqlErrorCollection, new object[] { sqlError });
-
-        var sqlException = (SqlException)Activator.CreateInstance(typeof(SqlException), true);
-        return sqlException;
     }
 
     [Fact]
@@ -73,7 +66,7 @@ public class CommandRepositoryTests
         string commandText = "INVALID SQL SYNTAX"; 
 
         // Act & Assert
-        await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteAsync<TestUser>(commandText, CommandType.Text));
+        await Assert.ThrowsAsync<Exception>(() => _repository.ExecuteAsync<TestUser>(commandText, CommandType.Text));
     }
 
     [Fact]
@@ -102,7 +95,7 @@ public class CommandRepositoryTests
         List<TestUser> dataList = new List<TestUser> { new TestUser { Id = 1, Name = "Alice" } };
 
         // Act & Assert
-        await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList));
+        await Assert.ThrowsAsync<Exception>(() => _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList));
     }
 
     private class TestUser
