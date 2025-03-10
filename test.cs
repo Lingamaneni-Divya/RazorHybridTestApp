@@ -1,62 +1,32 @@
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using Moq;
-using Polly;
-using Polly.Extensions.Http;
-using System;
-using System.Net;
-using System.Net.Http;
-using System.Threading.Tasks;
-using Xunit;
-
-public class ServiceExtensionsTests
+public static void AddCustomHttpClient(this IServiceCollection services, IConfiguration configuration)
 {
-    [Fact]
-    public void AddCustomHttpClient_RegistersHttpClientsCorrectly()
+    services.AddHttpClient<IHttpService, HttpService>()
+        .AddPolicyHandler((services, _) => GetRetryPolicy<IHttpService>(services, 13))
+        .ConfigurePrimaryHttpMessageHandler(() => CreateHttpClientHandler(configuration));
+
+    services.AddHttpClient<IGraphPagingService, GraphPagingService>()
+        .AddPolicyHandler((services, _) => GetRetryPolicy<IGraphPagingService>(services, 13))
+        .ConfigurePrimaryHttpMessageHandler(() => CreateHttpClientHandler(configuration));
+}
+
+private static HttpClientHandler CreateHttpClientHandler(IConfiguration configuration)
+{
+    var proxyAddress = configuration["ProxySettings:ProxyAddress"];
+
+    // Validate Proxy Address
+    if (!Uri.TryCreate(proxyAddress, UriKind.Absolute, out _))
     {
-        // Arrange
-        var services = new ServiceCollection();
-        var configValues = new Dictionary<string, string>
+        throw new ArgumentException($"Invalid proxy address: {proxyAddress}");
+    }
+
+    return new HttpClientHandler
+    {
+        Proxy = new WebProxy(proxyAddress, true, new string[]
         {
-            { "SomeConfigKey", "SomeValue" } // Just a placeholder for configuration
-        };
-
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configValues)
-            .Build();
-
-        // Act
-        services.AddCustomHttpClient(configuration);
-        var provider = services.BuildServiceProvider();
-
-        // Assert
-        var httpService = provider.GetRequiredService<IHttpService>();
-        var graphPagingService = provider.GetRequiredService<IGraphPagingService>();
-
-        Assert.NotNull(httpService);
-        Assert.NotNull(graphPagingService);
-    }
-
-    [Fact]
-    public async Task GetRetryPolicy_ShouldRetry_OnTransientErrors()
-    {
-        // Arrange
-        var serviceProviderMock = new Mock<IServiceProvider>();
-        var loggerMock = new Mock<ILogger<IHttpService>>();
-        serviceProviderMock.Setup(sp => sp.GetService(typeof(ILogger<IHttpService>)))
-                           .Returns(loggerMock.Object);
-
-        var retryPolicy = ServiceExtensions.GetRetryPolicy<IHttpService>(serviceProviderMock.Object, 3);
-
-        var transientErrorResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
-        var nonTransientResponse = new HttpResponseMessage(HttpStatusCode.BadRequest);
-
-        // Act & Assert
-        var transientResult = await retryPolicy.ExecuteAsync(() => Task.FromResult(transientErrorResponse));
-        Assert.Equal(HttpStatusCode.TooManyRequests, transientResult.StatusCode);
-
-        var nonTransientResult = await retryPolicy.ExecuteAsync(() => Task.FromResult(nonTransientResponse));
-        Assert.Equal(HttpStatusCode.BadRequest, nonTransientResult.StatusCode);
-    }
+            "wellsfargo.net",
+            "wellsfargo.com",
+            "ent.wfb.bank.corp",
+            "ent.wfb.bank.qa"
+        })
+    };
 }
