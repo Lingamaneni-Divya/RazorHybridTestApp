@@ -1,94 +1,96 @@
-[Fact]
-public void ValuesToObject_ValidInput_ShouldReturnListOfObjects()
+public class TypeConversionsTests
 {
-    // Arrange
-    var values = new List<List<object>>
+    [Fact]
+    public void ConvertObjectToT_ValidConversion_ShouldReturnConvertedObject()
     {
-        new() { 1, "Alice" },
-        new() { 2, "Bob" }
-    };
-    
-    var schema = new List<Schema>
+        // Arrange
+        var source = new SourceModel
+        {
+            Id = 1,
+            Name = "Alice",
+            Tags = new List<string> { "Tag1", "Tag2" }
+        };
+
+        // Act
+        var result = TypeConversions.ConvertObjectToT<TargetModel>(source);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(1, result.Id);
+        Assert.Equal("Alice", result.Name);
+        Assert.Equal("Tag1,Tag2", result.Tags); // ✅ Should be converted to CSV format
+    }
+
+    [Fact]
+    public void ConvertObjectToT_SourceHasMoreProperties_ShouldIgnoreExtraProperties()
     {
-        new Schema { Column = "Id", PropertyType = typeof(int) },
-        new Schema { Column = "Name", PropertyType = typeof(string) }
-    };
+        // Arrange
+        var source = new
+        {
+            Id = 1,
+            Name = "Bob",
+            ExtraField = "Ignore me"
+        };
 
-    // Act
-    var result = TypeConversions.ValuesToObject<TestModel>(values, schema);
+        // Act
+        var result = TypeConversions.ConvertObjectToT<TargetModel>(source);
 
-    // Assert
-    Assert.NotNull(result);
-    Assert.Equal(2, result.Count);
-    Assert.Equal(1, result[0].Id);
-    Assert.Equal("Alice", result[0].Name);
-    Assert.Equal(2, result[1].Id);
-    Assert.Equal("Bob", result[1].Name);
-}
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(1, result.Id);
+        Assert.Equal("Bob", result.Name);
+        Assert.Null(result.Tags); // ✅ Tags property is missing, so it should be null
+    }
 
-[Fact]
-public void ValuesToObject_NullSchema_ShouldReturnNull()
-{
-    // Arrange
-    var values = new List<List<object>> { new() { 1, "Alice" } };
-
-    // Act
-    var result = TypeConversions.ValuesToObject<TestModel>(values, null);
-
-    // Assert
-    Assert.Null(result);
-}
-
-[Fact]
-public void ValuesToObject_NullValues_ShouldReturnNull()
-{
-    // Arrange
-    var schema = new List<Schema>
+    [Fact]
+    public void ConvertObjectToT_SourceHasMissingProperties_ShouldNotThrow()
     {
-        new Schema { Column = "Id", PropertyType = typeof(int) }
-    };
+        // Arrange
+        var source = new { Id = 42 }; // Missing Name and Tags
 
-    // Act
-    var result = TypeConversions.ValuesToObject<TestModel>(null, schema);
+        // Act
+        var result = TypeConversions.ConvertObjectToT<TargetModel>(source);
 
-    // Assert
-    Assert.Null(result);
-}
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(42, result.Id);
+        Assert.Null(result.Name);
+        Assert.Null(result.Tags);
+    }
 
-[Fact]
-public void ValuesToObject_EmptyValues_ShouldReturnEmptyList()
-{
-    // Arrange
-    var values = new List<List<object>>();
-    var schema = new List<Schema>
+    [Fact]
+    public void ConvertObjectToT_NullSource_ShouldThrowArgumentNullException()
     {
-        new Schema { Column = "Id", PropertyType = typeof(int) }
-    };
+        // Act & Assert
+        Assert.Throws<ArgumentNullException>(() => TypeConversions.ConvertObjectToT<TargetModel>(null));
+    }
 
-    // Act
-    var result = TypeConversions.ValuesToObject<TestModel>(values, schema);
-
-    // Assert
-    Assert.NotNull(result);
-    Assert.Empty(result);
-}
-
-[Fact]
-public void ValuesToObject_MissingSchemaColumn_ShouldSkipProperty()
-{
-    // Arrange
-    var values = new List<List<object>> { new() { 1, "Alice" } };
-    var schema = new List<Schema>
+    [Fact]
+    public void ConvertObjectToT_PropertyTypeMismatch_ShouldNotAssignValue()
     {
-        new Schema { Column = "Id", PropertyType = typeof(int) } //  Missing "Name" column
-    };
+        // Arrange
+        var source = new { Id = "NotAnInt", Name = "Test" };
 
-    // Act
-    var result = TypeConversions.ValuesToObject<TestModel>(values, schema);
+        // Act & Assert
+        Assert.Throws<InvalidCastException>(() => TypeConversions.ConvertObjectToT<TargetModel>(source));
+    }
 
-    // Assert
-    Assert.NotNull(result);
-    Assert.Single(result);
-    Assert.Equal(1, result[0].Id);
-    Assert.Null(result[0].Name); // Name property is missing in schema, so should be null
+    [Fact]
+    public void ConvertObjectToT_EnumerableToStringConversion_ShouldWork()
+    {
+        // Arrange
+        var source = new SourceModel
+        {
+            Id = 5,
+            Name = "Eve",
+            Tags = new List<string> { "X", "Y", "Z" }
+        };
+
+        // Act
+        var result = TypeConversions.ConvertObjectToT<TargetModel>(source);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("X,Y,Z", result.Tags); // ✅ List converted to CSV string
+    }
 }
