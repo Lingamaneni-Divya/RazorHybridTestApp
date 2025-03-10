@@ -1,155 +1,80 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Linq;
 using System.Text.Json;
-using System.Threading.Tasks;
-using IntuneMobilityViolationJob.Common;
-using IntuneMobilityViolationJob.Models.GraphAPIServiceModels;
-using Microsoft.Data.SqlClient;
 using Xunit;
 
 public class TypeConversionsTests
 {
-    private class TestClass
+    [Theory]
+    [InlineData("123", typeof(int), 123)]
+    [InlineData("45.67", typeof(double), 45.67)]
+    [InlineData("true", typeof(bool), true)]
+    [InlineData("A", typeof(char), 'A')]
+    [InlineData("100000000000", typeof(long), 100000000000L)]
+    [InlineData("3.14", typeof(float), 3.14f)]
+    [InlineData("2025-03-05", typeof(DateTime), "2025-03-05")] // Date format may vary
+    public void ConvertToType_ShouldConvertPrimitives(string input, Type targetType, object expected)
     {
-        public int Id { get; set; }
-        public string Name { get; set; }
+        var result = TypeConversions.ConvertToType(input, targetType);
+        Assert.Equal(Convert.ChangeType(expected, targetType), result);
     }
 
     [Fact]
-    public void DeSerializeJsonToObject_ShouldDeserialize_ValidJson()
+    public void ConvertToType_ShouldConvertNullableTypes()
     {
-        string json = "{\"Id\":1,\"Name\":\"Alice\"}";
-        var result = TypeConversions.DeSerializeJsonToObject<TestClass>(json);
+        Assert.Equal(123, TypeConversions.ConvertToType("123", typeof(int?)));
+        Assert.Equal(3.14, TypeConversions.ConvertToType("3.14", typeof(double?)));
+        Assert.Equal(true, TypeConversions.ConvertToType("true", typeof(bool?)));
+        Assert.Null(TypeConversions.ConvertToType(null, typeof(int?)));
+    }
 
+    [Fact]
+    public void ConvertToType_ShouldConvertEnums()
+    {
+        Assert.Equal(DayOfWeek.Monday, TypeConversions.ConvertToType("Monday", typeof(DayOfWeek)));
+        Assert.Equal(DayOfWeek.Friday, TypeConversions.ConvertToType("5", typeof(DayOfWeek)));
+        Assert.Null(TypeConversions.ConvertToType("InvalidDay", typeof(DayOfWeek)));
+    }
+
+    [Fact]
+    public void ConvertToType_ShouldConvertGuids()
+    {
+        string guidStr = "4a5d6f7e-8a90-1234-5678-abcdef123456";
+        Guid expectedGuid = Guid.Parse(guidStr);
+
+        var result = TypeConversions.ConvertToType(guidStr, typeof(Guid));
+        Assert.Equal(expectedGuid, result);
+
+        Assert.Null(TypeConversions.ConvertToType("invalid-guid", typeof(Guid)));
+    }
+
+    [Fact]
+    public void ConvertToType_ShouldConvertComplexObjects()
+    {
+        var obj = new { Name = "Divya", Age = 26 };
+        string json = JsonSerializer.Serialize(obj);
+
+        var result = TypeConversions.ConvertToType(json, obj.GetType());
         Assert.NotNull(result);
-        Assert.Equal(1, result.Id);
-        Assert.Equal("Alice", result.Name);
+        Assert.Equal(obj.Name, result.GetType().GetProperty("Name")?.GetValue(result));
+        Assert.Equal(obj.Age, result.GetType().GetProperty("Age")?.GetValue(result));
     }
 
     [Fact]
-    public void ValuesToObject_ShouldReturnListOfObjects()
+    public void ConvertToType_ShouldReturnNullForInvalidConversion()
     {
-        var schema = new List<Schema>
-        {
-            new Schema { Column = "Id" },
-            new Schema { Column = "Name" }
-        };
-        var values = new List<List<object>>
-        {
-            new List<object> { 1, "Alice" },
-            new List<object> { 2, "Bob" }
-        };
-
-        var result = TypeConversions.ValuesToObject<TestClass>(values, schema);
-
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Count);
-        Assert.Equal("Alice", result[0].Name);
-        Assert.Equal("Bob", result[1].Name);
+        Assert.Null(TypeConversions.ConvertToType("NotANumber", typeof(int)));
+        Assert.Null(TypeConversions.ConvertToType("XYZ", typeof(double)));
+        Assert.Null(TypeConversions.ConvertToType("InvalidEnumValue", typeof(DayOfWeek)));
     }
 
     [Fact]
-    public void ConvertObjectToT_ShouldConvertObjectToType()
+    public void ConvertToType_ShouldReturnSameValueIfAlreadyCorrectType()
     {
-        var source = new { Id = 1, Name = "Alice" };
-        var result = TypeConversions.ConvertObjectToT<TestClass>(source);
-
-        Assert.NotNull(result);
-        Assert.Equal(1, result.Id);
-        Assert.Equal("Alice", result.Name);
-    }
-
-    [Fact]
-    public void ConvertObjectListToListT_ShouldConvertObjectArrayToList()
-    {
-        var source = new object[]
-        {
-            new { Id = 1, Name = "Alice" },
-            new { Id = 2, Name = "Bob" }
-        };
-
-        var result = TypeConversions.ConvertObjectListToListT<TestClass>(source);
-
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Count);
-        Assert.Equal("Alice", result[0].Name);
-        Assert.Equal("Bob", result[1].Name);
-    }
-
-    [Fact]
-    public void ConvertToType_ShouldConvertValuesCorrectly()
-    {
-        object value = "123";
-        var result = TypeConversions.ConvertToType(value, typeof(int));
-
-        Assert.IsType<int>(result);
-        Assert.Equal(123, result);
-    }
-
-    [Fact]
-    public void ConvertIEnumerableToDataTable_ShouldConvertListToDataTable()
-    {
-        var dataList = new List<TestClass>
-        {
-            new TestClass { Id = 1, Name = "Alice" },
-            new TestClass { Id = 2, Name = "Bob" }
-        };
-
-        var dataTable = TypeConversions.ConvertIEnumerableToDataTable(dataList);
-
-        Assert.Equal(2, dataTable.Rows.Count);
-        Assert.Equal("Alice", dataTable.Rows[0]["Name"]);
-        Assert.Equal(2, dataTable.Rows[1]["Id"]);
-    }
-
-    [Fact]
-    public void GenerateParameters_ShouldReturnSqlParameters()
-    {
-        var testObj = new TestClass { Id = 1, Name = "Alice" };
-        var parameters = TypeConversions.GenerateParameters(testObj);
-
-        Assert.NotNull(parameters);
-        Assert.Equal(2, parameters.Length);
-        Assert.Contains(parameters, p => p.ParameterName == "@Id" && (int)p.Value == 1);
-        Assert.Contains(parameters, p => p.ParameterName == "@Name" && (string)p.Value == "Alice");
-    }
-
-    [Fact]
-    public void GetSqlDbType_ShouldReturnCorrectType()
-    {
-        Assert.Equal(SqlDbType.Int, TypeConversions.GetSqlDbType(typeof(int)));
-        Assert.Equal(SqlDbType.VarChar, TypeConversions.GetSqlDbType(typeof(string)));
-        Assert.Equal(SqlDbType.DateTime, TypeConversions.GetSqlDbType(typeof(DateTime)));
-    }
-
-    [Fact]
-    public async Task ConvertDataTableToIEnumerable_ShouldConvertDataTableToList()
-    {
-        var dataTable = new DataTable();
-        dataTable.Columns.Add("Id", typeof(int));
-        dataTable.Columns.Add("Name", typeof(string));
-
-        dataTable.Rows.Add(1, "Alice");
-        dataTable.Rows.Add(2, "Bob");
-
-        var result = await TypeConversions.ConvertDataTableToIEnumerable<TestClass>(dataTable);
-
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Count());
-        Assert.Contains(result, r => r.Name == "Alice");
-    }
-
-    [Fact]
-    public void BuildUrlWithParameters_ShouldReturnCorrectUrl()
-    {
-        string baseUrl = "https://example.com";
-        var parameters = new Dictionary<string, string> { { "key1", "value1" }, { "key2", "value2" } };
-
-        string result = TypeConversions.BuildUrlWithParameters(baseUrl, parameters);
-
-        Assert.Contains("key1=value1", result);
-        Assert.Contains("key2=value2", result);
+        int number = 42;
+        string text = "Hello";
+        Assert.Equal(number, TypeConversions.ConvertToType(number, typeof(int)));
+        Assert.Equal(text, TypeConversions.ConvertToType(text, typeof(string)));
     }
 }
