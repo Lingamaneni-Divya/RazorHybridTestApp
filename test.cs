@@ -2,7 +2,9 @@ using Xunit;
 using Moq;
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Collections.Generic;
 using IntuneMobilityViolationJob.Common;
+using System.Text.Json;
 
 public class AppConstantsTests
 {
@@ -39,9 +41,10 @@ public class AppConstantsTests
             .AddInMemoryCollection(validConfig)
             .Build();
 
+        // Mock ProxySettings as a JSON serialized string
         var mockProxySettings = new ProxySettings { ProxyUrl = "http://proxy.com", UseProxy = true };
-        _mockConfiguration.Setup(c => c.GetSection("ProxySettings").Get<ProxySettings>())
-            .Returns(mockProxySettings);
+        _mockSection.Setup(s => s.Value).Returns(JsonSerializer.Serialize(mockProxySettings));
+        _mockConfiguration.Setup(c => c.GetSection("ProxySettings")).Returns(_mockSection.Object);
 
         // Act
         AppConstants.Initialize(configuration);
@@ -59,7 +62,11 @@ public class AppConstantsTests
         Assert.Equal("/devices/configSettings", AppConstants.ManagedDeviceConfigurationSettingComplianceReport);
         Assert.Equal("/devices/configStates", AppConstants.ManagedDeviceConfigurationSettingStates);
         Assert.Equal("/batch/request", AppConstants.BatchRequest);
-        Assert.Equal(mockProxySettings, AppConstants.ProxySettings);
+
+        // Ensure ProxySettings is correctly deserialized
+        Assert.NotNull(AppConstants.ProxySettings);
+        Assert.Equal("http://proxy.com", AppConstants.ProxySettings.ProxyUrl);
+        Assert.True(AppConstants.ProxySettings.UseProxy);
 
         // Constant Value Assertion
         Assert.Equal("(Notes eq 'bc3e5c73-0224-4063-9b2b-0c36784b7e80') and (((deviceType eq 'iPad') or (deviceType eq 'iPhone') or (deviceType eq 'iPod')))", AppConstants.IOSDeviceFilter);
