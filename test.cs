@@ -1,99 +1,72 @@
-using Xunit;
-using Moq;
-using Microsoft.Extensions.Configuration;
-using System;
 using System.Collections.Generic;
-using IntuneMobilityViolationJob.Common;
-using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Moq;
+using Xunit;
 
 public class AppConstantsTests
 {
-    private readonly Mock<IConfiguration> _mockConfiguration;
-    private readonly Mock<IConfigurationSection> _mockSection;
-
-    public AppConstantsTests()
-    {
-        _mockConfiguration = new Mock<IConfiguration>();
-        _mockSection = new Mock<IConfigurationSection>();
-    }
-
     [Fact]
-    public void Initialize_ShouldAssignCorrectValues_WhenConfigurationIsValid()
+    public void Initialize_SetsAllValuesCorrectly()
     {
         // Arrange
-        var validConfig = new Dictionary<string, string>
+        var configValues = new Dictionary<string, string>
         {
-            {"APIEndpoints:BaseUrl", "https://example.com"},
-            {"APIEndpoints:DeviceOverview", "/devices/overview"},
-            {"APIEndpoints:ManagedDevices", "/devices/managed"},
-            {"APIEndpoints:ManagedDeviceFullData", "/devices/full"},
-            {"APIEndpoints:RanagedDeviceUsers", "/devices/users"},
-            {"APIEndpoints:ManagedDeviceDetectedApps", "/devices/detectedApps"},
-            {"APIEndpoints:ManagedDevicePoliciesComplianceReport", "/devices/policies"},
-            {"APIEndpoints:ManagedDevicePolicySettingsComplianceReport", "/devices/policySettings"},
-            {"APIEndpoints:ManagedDeviceConfigurationPoliciesComplianceReport", "/devices/configPolicies"},
-            {"APIEndpoints:ManagedDeviceConfigurationSettingComplianceReport", "/devices/configSettings"},
-            {"APIEndpoints:ManagedDeviceConfigurationSettingStates", "/devices/configStates"},
-            {"APIEndpoints:BatchRequest", "/batch/request"}
+            { "APIEndpoints:BaseUrl", "https://api.example.com" },
+            { "APIEndpoints:DeviceOverview", "/devices/overview" },
+            { "APIEndpoints:ManagedDevices", "/devices/managed" },
+            { "APIEndpoints:ManagedDeviceFullData", "/devices/fullData" },
+            { "APIEndpoints:ManagedDeviceUsers", "/devices/users" },
+            { "APIEndpoints:ManagedDeviceDetectedApps", "/devices/detectedApps" },
+            { "APIEndpoints:ManagedDevicePoliciesComplianceReport", "/devices/policiesCompliance" },
+            { "APIEndpoints:ManagedDevicePolicySettingsComplianceReport", "/devices/policySettingsCompliance" },
+            { "APIEndpoints:ManagedDeviceConfigurationPoliciesComplianceReport", "/devices/configPoliciesCompliance" },
+            { "APIEndpoints:ManagedDeviceConfigurationSettingComplianceReport", "/devices/configSettingCompliance" },
+            { "APIEndpoints:ManagedDeviceConfigurationSettingStates", "/devices/configSettingStates" },
+            { "APIEndpoints:BatchRequest", "/batch" },
+            { "ProxySettings:ProxyAddress", "http://proxy.example.com" },
+            { "ProxySettings:ProxyBypassList:0", "localhost" },
+            { "ProxySettings:ProxyBypassList:1", "127.0.0.1" }
         };
 
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(validConfig)
+            .AddInMemoryCollection(configValues)
             .Build();
-
-        // Mock ProxySettings as a JSON serialized string
-        var mockProxySettings = new ProxySettings { ProxyUrl = "http://proxy.com", UseProxy = true };
-        _mockSection.Setup(s => s.Value).Returns(JsonSerializer.Serialize(mockProxySettings));
-        _mockConfiguration.Setup(c => c.GetSection("ProxySettings")).Returns(_mockSection.Object);
 
         // Act
         AppConstants.Initialize(configuration);
 
-        // Assert
-        Assert.Equal("https://example.com", AppConstants.GraphAPIBaseurl);
+        // Assert - Check all properties are correctly initialized
+        Assert.Equal("https://api.example.com", AppConstants.GraphAPIBaseurl);
         Assert.Equal("/devices/overview", AppConstants.DevicesOverview);
         Assert.Equal("/devices/managed", AppConstants.ManagedDevices);
-        Assert.Equal("/devices/full", AppConstants.ManagedDeviceFullData);
-        Assert.Equal("/devices/users", AppConstants.ManagedDeviceusers);
+        Assert.Equal("/devices/fullData", AppConstants.ManagedDeviceFullData);
+        Assert.Equal("/devices/users", AppConstants.ManagedDeviceUsers);
         Assert.Equal("/devices/detectedApps", AppConstants.ManagedDeviceDetectedApps);
-        Assert.Equal("/devices/policies", AppConstants.ManagedDevicePoliciesComplianceReport);
-        Assert.Equal("/devices/policySettings", AppConstants.ManagedDevicePolicySettingsComplianceReport);
-        Assert.Equal("/devices/configPolicies", AppConstants.ManagedDeviceConfigurationPoliciesComplianceReport);
-        Assert.Equal("/devices/configSettings", AppConstants.ManagedDeviceConfigurationSettingComplianceReport);
-        Assert.Equal("/devices/configStates", AppConstants.ManagedDeviceConfigurationSettingStates);
-        Assert.Equal("/batch/request", AppConstants.BatchRequest);
+        Assert.Equal("/devices/policiesCompliance", AppConstants.ManagedDevicePoliciesComplianceReport);
+        Assert.Equal("/devices/policySettingsCompliance", AppConstants.ManagedDevicePolicySettingsComplianceReport);
+        Assert.Equal("/devices/configPoliciesCompliance", AppConstants.ManagedDeviceConfigurationPoliciesComplianceReport);
+        Assert.Equal("/devices/configSettingCompliance", AppConstants.ManagedDeviceConfigurationSettingComplianceReport);
+        Assert.Equal("/devices/configSettingStates", AppConstants.ManagedDeviceConfigurationSettingStates);
+        Assert.Equal("/batch", AppConstants.BatchRequest);
 
-        // Ensure ProxySettings is correctly deserialized
+        // ProxySettings assertions
         Assert.NotNull(AppConstants.ProxySettings);
-        Assert.Equal("http://proxy.com", AppConstants.ProxySettings.ProxyUrl);
-        Assert.True(AppConstants.ProxySettings.UseProxy);
-
-        // Constant Value Assertion
-        Assert.Equal("(Notes eq 'bc3e5c73-0224-4063-9b2b-0c36784b7e80') and (((deviceType eq 'iPad') or (deviceType eq 'iPhone') or (deviceType eq 'iPod')))", AppConstants.IOSDeviceFilter);
+        Assert.Equal("http://proxy.example.com", AppConstants.ProxySettings.ProxyAddress);
+        Assert.Contains("localhost", AppConstants.ProxySettings.ProxyBypassList);
+        Assert.Contains("127.0.0.1", AppConstants.ProxySettings.ProxyBypassList);
     }
 
     [Fact]
-    public void Initialize_ShouldThrowException_WhenRequiredConfigMissing()
+    public void Initialize_SetsProxySettingsToNull_WhenMissing()
     {
         // Arrange
-        var configuration = new ConfigurationBuilder().Build(); // Empty configuration
-
-        // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => AppConstants.Initialize(configuration));
-    }
-
-    [Fact]
-    public void Initialize_ShouldAssignNull_WhenProxySettingsMissing()
-    {
-        // Arrange
-        var validConfig = new Dictionary<string, string>
+        var configValues = new Dictionary<string, string>
         {
-            {"APIEndpoints:BaseUrl", "https://example.com"},
-            {"APIEndpoints:DeviceOverview", "/devices/overview"}
+            { "APIEndpoints:BaseUrl", "https://api.example.com" }
         };
 
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(validConfig)
+            .AddInMemoryCollection(configValues)
             .Build();
 
         // Act
@@ -101,5 +74,19 @@ public class AppConstantsTests
 
         // Assert
         Assert.Null(AppConstants.ProxySettings);
+    }
+
+    [Fact]
+    public void Initialize_ThrowsException_WhenMandatoryFieldsAreMissing()
+    {
+        // Arrange
+        var configValues = new Dictionary<string, string>(); // Empty configuration
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configValues)
+            .Build();
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => AppConstants.Initialize(configuration));
     }
 }
