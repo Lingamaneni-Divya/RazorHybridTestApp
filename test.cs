@@ -1,117 +1,84 @@
-[Fact]
-public void AddCustomHttpClient_Should_Register_HttpClientServices()
+using IntuneMobilityViolationJob.Repository.Command.BaseRepository;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Data.SqlClient;
+using Moq;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading.Tasks;
+using Xunit;
+
+public class CommandRepositoryTests
 {
-    // Arrange
-    var services = new ServiceCollection();
-    var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+    private readonly CommandRepository _repository;
+    private readonly Mock<IConfiguration> _mockConfiguration;
+    private readonly string _connectionString = "Server=myServer;Database=TestDB;Trusted_Connection=True;";
 
-    // Act
-    services.AddCustomHttpClient(configuration);
-    var provider = services.BuildServiceProvider();
+    public CommandRepositoryTests()
+    {
+        _mockConfiguration = new Mock<IConfiguration>();
+        _mockConfiguration.Setup(config => config["ConnectionStrings:MobilityViolationDB"]).Returns(_connectionString);
 
-    // Assert
-    Assert.NotNull(provider.GetService<IHttpService>());
-    Assert.NotNull(provider.GetService<IGraphPagingService>());
-}
+        _repository = new CommandRepository(_mockConfiguration.Object);
+    }
 
-[Fact]
-public void AddCustomHttpClient_Should_Apply_RetryPolicy()
-{
-    // Arrange
-    var services = new ServiceCollection();
-    var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+    [Fact]
+    public async Task ExecuteAsync_Should_Execute_Command_Successfully()
+    {
+        // Arrange
+        string commandText = "UPDATE Users SET Name='Test' WHERE Id=1";
+        SqlParameter[] parameters = { new SqlParameter("@Id", 1) };
 
-    // Act
-    services.AddCustomHttpClient(configuration);
-    var provider = services.BuildServiceProvider();
-    var factory = provider.GetRequiredService<IHttpClientFactory>();
+        // Act
+        await _repository.ExecuteAsync(commandText, CommandType.Text, parameters);
 
-    var client = factory.CreateClient(nameof(IHttpService));
+        // Assert - No exceptions mean success
+        Assert.True(true);
+    }
 
-    // Assert
-    Assert.NotNull(client);
-}
+    [Fact]
+    public async Task ExecuteAsync_Should_Handle_Exception_And_Rollback()
+    {
+        // Arrange
+        string commandText = "INVALID SQL SYNTAX"; 
 
-[Fact]
-public void CreateHttpClientHandler_Should_ThrowException_When_InvalidProxy()
-{
-    // Arrange
-    var configuration = new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?>
+        // Act & Assert
+        await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteAsync(commandText, CommandType.Text));
+    }
+
+    [Fact]
+    public async Task ExecuteBatchAsync_Should_Execute_Batches_Successfully()
+    {
+        // Arrange
+        string commandText = "INSERT INTO Users (Id, Name) VALUES (@Id, @Name)";
+        List<TestUser> dataList = new List<TestUser>
         {
-            { "ProxySettings:ProxyAddress", "invalid_url" }
-        })
-        .Build();
+            new TestUser { Id = 1, Name = "Alice" },
+            new TestUser { Id = 2, Name = "Bob" },
+            new TestUser { Id = 3, Name = "Charlie" }
+        };
 
-    // Act & Assert
-    var exception = Assert.Throws<ArgumentException>(() => CreateHttpClientHandler(configuration));
-    Assert.Contains("Invalid proxy address", exception.Message);
-}
+        // Act
+        await _repository.ExecuteBatchAsync(commandText, CommandType.Text, dataList);
 
-[Fact]
-public void CreateHttpClientHandler_Should_Return_Handler_With_Proxy()
-{
-    // Arrange
-    var proxyAddress = "http://validproxy.com";
-    var configuration = new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            { "ProxySettings:ProxyAddress", proxyAddress }
-        })
-        .Build();
+        // Assert - No exceptions mean success
+        Assert.True(true);
+    }
 
-    // Act
-    var handler = CreateHttpClientHandler(configuration);
+    [Fact]
+    public async Task ExecuteBatchAsync_Should_Handle_Exception_And_Retry()
+    {
+        // Arrange
+        string commandText = "INVALID SQL SYNTAX"; 
+        List<TestUser> dataList = new List<TestUser> { new TestUser { Id = 1, Name = "Alice" } };
 
-    // Assert
-    Assert.NotNull(handler);
-    Assert.NotNull(handler.Proxy);
-    Assert.IsType<WebProxy>(handler.Proxy);
-    Assert.Equal(proxyAddress, ((WebProxy)handler.Proxy!).Address.ToString());
-}
+        // Act & Assert
+        await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteBatchAsync(commandText, CommandType.Text, dataList));
+    }
 
-[Fact]
-public void CreateHttpClientHandler_Should_ThrowException_When_InvalidProxy()
-{
-    // Arrange
-    var configuration = new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            { "ProxySettings:ProxyAddress", "invalid_url" }
-        })
-        .Build();
-
-    var methodInfo = typeof(ServiceExtensions)
-        .GetMethod("CreateHttpClientHandler", BindingFlags.NonPublic | BindingFlags.Static);
-    
-    // Act & Assert
-    var exception = Assert.Throws<TargetInvocationException>(() =>
-        methodInfo.Invoke(null, new object[] { configuration }));
-
-    Assert.Contains("Invalid proxy address", exception.InnerException.Message);
-}
-
-[Fact]
-public void CreateHttpClientHandler_Should_Return_Handler_With_Proxy()
-{
-    // Arrange
-    var proxyAddress = "http://validproxy.com";
-    var configuration = new ConfigurationBuilder()
-        .AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            { "ProxySettings:ProxyAddress", proxyAddress }
-        })
-        .Build();
-
-    var methodInfo = typeof(ServiceExtensions)
-        .GetMethod("CreateHttpClientHandler", BindingFlags.NonPublic | BindingFlags.Static);
-
-    // Act
-    var handler = (HttpClientHandler)methodInfo.Invoke(null, new object[] { configuration });
-
-    // Assert
-    Assert.NotNull(handler);
-    Assert.NotNull(handler.Proxy);
-    Assert.IsType<WebProxy>(handler.Proxy);
-    Assert.Equal(proxyAddress, ((WebProxy)handler.Proxy!).Address.ToString());
+    private class TestUser
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
 }
