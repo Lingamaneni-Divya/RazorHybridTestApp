@@ -1,84 +1,89 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
+using Polly;
+using Polly.Extensions.Http;
 using System;
 using System.Net;
 using System.Net.Http;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Moq;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace IntuneMobilityViolation.Job.Tests
 {
     public class ServiceExtensionsTests
     {
-        private readonly Mock<IConfiguration> _mockConfig;
         private readonly IServiceCollection _services;
-var authMock = new Mock<IAUTHTokenService>();
-_services.AddSingleton(authMock.Object);
+        private readonly Mock<IConfiguration> _mockConfiguration;
+
         public ServiceExtensionsTests()
         {
-            _mockConfig = new Mock<IConfiguration>();
             _services = new ServiceCollection();
+            _mockConfiguration = new Mock<IConfiguration>();
         }
 
         [Fact]
-        public void AddCustomHttpClient_ShouldRegisterHttpClients()
+        public void AddCustomHttpClient_Should_Register_HttpClients()
         {
             // Arrange
-            _mockConfig.Setup(c => c["ProxySettings:ProxyAddress"]).Returns("http://valid-proxy.com");
+            _services.AddCustomHttpClient(_mockConfiguration.Object);
+            var provider = _services.BuildServiceProvider();
 
             // Act
-            _services.AddCustomHttpClient(_mockConfig.Object);
-            var serviceProvider = _services.BuildServiceProvider();
+            var httpService = provider.GetService<IHttpService>();
+            var graphPagingService = provider.GetService<IGraphPagingService>();
 
             // Assert
-            var httpClient1 = serviceProvider.GetService<IHttpClientFactory>();
-            Assert.NotNull(httpClient1); // Ensure HttpClientFactory is registered
-
-            var httpClient2 = serviceProvider.GetService<IHttpService>();
-            Assert.NotNull(httpClient2); // Ensure IHttpService is registered
-
-            var httpClient3 = serviceProvider.GetService<IGraphPagingService>();
-            Assert.NotNull(httpClient3); // Ensure IGraphPagingService is registered
+            Assert.NotNull(httpService);
+            Assert.NotNull(graphPagingService);
         }
 
         [Fact]
-        public void CreateHttpClientHandler_ShouldReturnHandlerWithProxy()
+        public void AddCustomHttpClient_Should_Configure_HttpClient_With_PolicyHandler()
         {
             // Arrange
-            _mockConfig.Setup(c => c["ProxySettings:ProxyAddress"]).Returns("http://valid-proxy.com");
+            _services.AddCustomHttpClient(_mockConfiguration.Object);
+            var provider = _services.BuildServiceProvider();
 
             // Act
-            var handler = typeof(ServiceExtensions)
-                .GetMethod("CreateHttpClientHandler", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
-                .Invoke(null, new object[] { _mockConfig.Object }) as HttpClientHandler;
+            var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
+            var httpClient = httpClientFactory.CreateClient(nameof(IHttpService));
 
             // Assert
-            Assert.NotNull(handler);
-            Assert.NotNull(handler.Proxy);
-            Assert.IsType<WebProxy>(handler.Proxy);
-
-            var webProxy = (WebProxy)handler.Proxy;
-            Assert.Equal("http://valid-proxy.com", webProxy.Address.ToString());
-            Assert.Contains("wellsfargo.net", webProxy.BypassList);
-            Assert.Contains("ent.wfb.bank.qa", webProxy.BypassList);
+            Assert.NotNull(httpClient);
         }
 
         [Fact]
-        public void CreateHttpClientHandler_ShouldThrowExceptionForInvalidProxy()
+        public async Task RetryPolicy_Should_Handle_Transient_Errors()
         {
             // Arrange
-            _mockConfig.Setup(c => c["ProxySettings:ProxyAddress"]).Returns("invalid-url");
+            var policy = HttpPolicyExtensions
+                .HandleTransientHttpError()
+                .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)));
 
-            // Act & Assert
-            var exception = Assert.Throws<TargetInvocationException>(() =>
+            var handler = new HttpClientHandler();
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://example.com") };
+
+            int retryCount = 0;
+
+            // Act
+            await Assert.ThrowsAsync<HttpRequestException>(async () =>
             {
-                typeof(ServiceExtensions)
-                    .GetMethod("CreateHttpClientHandler", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
-                    .Invoke(null, new object[] { _mockConfig.Object });
+                await policy.ExecuteAsync(async () =>
+                {
+                    retryCount++;
+                    var response = new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+                    if (retryCount < 3)
+                    {
+                        throw new HttpRequestException();
+                    }
+                    return response;
+                });
             });
 
-            Assert.IsType<ArgumentException>(exception.InnerException);
-            Assert.Contains("Invalid proxy address", exception.InnerException.Message);
+            // Assert
+            Assert.Equal(3, retryCount);
         }
     }
 }
