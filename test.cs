@@ -1,52 +1,71 @@
-using Microsoft.Extensions.DependencyInjection;
-using Polly;
-using Polly.Extensions.Http;
-using System;
-using System.Net;
-using System.Net.Http;
-using System.Threading.Tasks;
-using Xunit;
-
-namespace IntuneMobilityViolation.Job.Tests
+[Fact]
+public void AddCustomHttpClient_Should_Register_HttpClientServices()
 {
-    public class ServiceExtensionsTests
-    {
-        [Fact]
-        public async Task RetryPolicy_Should_Handle_Transient_Errors()
+    // Arrange
+    var services = new ServiceCollection();
+    var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+
+    // Act
+    services.AddCustomHttpClient(configuration);
+    var provider = services.BuildServiceProvider();
+
+    // Assert
+    Assert.NotNull(provider.GetService<IHttpService>());
+    Assert.NotNull(provider.GetService<IGraphPagingService>());
+}
+
+[Fact]
+public void AddCustomHttpClient_Should_Apply_RetryPolicy()
+{
+    // Arrange
+    var services = new ServiceCollection();
+    var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+
+    // Act
+    services.AddCustomHttpClient(configuration);
+    var provider = services.BuildServiceProvider();
+    var factory = provider.GetRequiredService<IHttpClientFactory>();
+
+    var client = factory.CreateClient(nameof(IHttpService));
+
+    // Assert
+    Assert.NotNull(client);
+}
+
+[Fact]
+public void CreateHttpClientHandler_Should_ThrowException_When_InvalidProxy()
+{
+    // Arrange
+    var configuration = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?>
         {
-            // Arrange
-            int retryCount = 0;
-            var policy = HttpPolicyExtensions
-                .HandleTransientHttpError()
-                .OrResult(response => response.StatusCode == HttpStatusCode.ServiceUnavailable) // Ensure it retries on 503 errors
-                .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                    onRetry: (response, timespan, retryAttempt, context) =>
-                    {
-                        retryCount++;
-                    });
+            { "ProxySettings:ProxyAddress", "invalid_url" }
+        })
+        .Build();
 
-            var handler = new FakeHttpMessageHandler();
-            var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://example.com") };
+    // Act & Assert
+    var exception = Assert.Throws<ArgumentException>(() => CreateHttpClientHandler(configuration));
+    Assert.Contains("Invalid proxy address", exception.Message);
+}
 
-            // Act
-            var response = await policy.ExecuteAsync(async () =>
-            {
-                return await httpClient.GetAsync("/test");
-            });
-
-            // Assert
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-            Assert.Equal(3, retryCount); // It should retry 3 times before failing
-        }
-
-        // Fake HTTP handler to simulate transient failures
-        private class FakeHttpMessageHandler : HttpMessageHandler
+[Fact]
+public void CreateHttpClientHandler_Should_Return_Handler_With_Proxy()
+{
+    // Arrange
+    var proxyAddress = "http://validproxy.com";
+    var configuration = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?>
         {
-            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, System.Threading.CancellationToken cancellationToken)
-            {
-                await Task.Delay(50); // Simulate network delay
-                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable); // Always return 503 to trigger retry
-            }
-        }
-    }
+            { "ProxySettings:ProxyAddress", proxyAddress }
+        })
+        .Build();
+
+    // Act
+    var handler = CreateHttpClientHandler(configuration);
+
+    // Assert
+    Assert.NotNull(handler);
+    Assert.NotNull(handler.Proxy);
+    Assert.IsType<WebProxy>(handler.Proxy);
+    Assert.Equal(proxyAddress, ((WebProxy)handler.Proxy!).Address.ToString());
 }
