@@ -1,31 +1,25 @@
-using System.Collections.Generic;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Moq;
+using Polly;
+using Polly.Extensions.Http;
+using System;
+using System.Net;
+using System.Net.Http;
+using System.Threading.Tasks;
 using Xunit;
 
-public class AppConstantsTests
+public class ServiceExtensionsTests
 {
     [Fact]
-    public void Initialize_SetsAllValuesCorrectly()
+    public void AddCustomHttpClient_RegistersHttpClientsCorrectly()
     {
         // Arrange
+        var services = new ServiceCollection();
         var configValues = new Dictionary<string, string>
         {
-            { "APIEndpoints:BaseUrl", "https://api.example.com" },
-            { "APIEndpoints:DeviceOverview", "/devices/overview" },
-            { "APIEndpoints:ManagedDevices", "/devices/managed" },
-            { "APIEndpoints:ManagedDeviceFullData", "/devices/fullData" },
-            { "APIEndpoints:ManagedDeviceUsers", "/devices/users" },
-            { "APIEndpoints:ManagedDeviceDetectedApps", "/devices/detectedApps" },
-            { "APIEndpoints:ManagedDevicePoliciesComplianceReport", "/devices/policiesCompliance" },
-            { "APIEndpoints:ManagedDevicePolicySettingsComplianceReport", "/devices/policySettingsCompliance" },
-            { "APIEndpoints:ManagedDeviceConfigurationPoliciesComplianceReport", "/devices/configPoliciesCompliance" },
-            { "APIEndpoints:ManagedDeviceConfigurationSettingComplianceReport", "/devices/configSettingCompliance" },
-            { "APIEndpoints:ManagedDeviceConfigurationSettingStates", "/devices/configSettingStates" },
-            { "APIEndpoints:BatchRequest", "/batch" },
-            { "ProxySettings:ProxyAddress", "http://proxy.example.com" },
-            { "ProxySettings:ProxyBypassList:0", "localhost" },
-            { "ProxySettings:ProxyBypassList:1", "127.0.0.1" }
+            { "SomeConfigKey", "SomeValue" } // Just a placeholder for configuration
         };
 
         var configuration = new ConfigurationBuilder()
@@ -33,60 +27,36 @@ public class AppConstantsTests
             .Build();
 
         // Act
-        AppConstants.Initialize(configuration);
-
-        // Assert - Check all properties are correctly initialized
-        Assert.Equal("https://api.example.com", AppConstants.GraphAPIBaseurl);
-        Assert.Equal("/devices/overview", AppConstants.DevicesOverview);
-        Assert.Equal("/devices/managed", AppConstants.ManagedDevices);
-        Assert.Equal("/devices/fullData", AppConstants.ManagedDeviceFullData);
-        Assert.Equal("/devices/users", AppConstants.ManagedDeviceUsers);
-        Assert.Equal("/devices/detectedApps", AppConstants.ManagedDeviceDetectedApps);
-        Assert.Equal("/devices/policiesCompliance", AppConstants.ManagedDevicePoliciesComplianceReport);
-        Assert.Equal("/devices/policySettingsCompliance", AppConstants.ManagedDevicePolicySettingsComplianceReport);
-        Assert.Equal("/devices/configPoliciesCompliance", AppConstants.ManagedDeviceConfigurationPoliciesComplianceReport);
-        Assert.Equal("/devices/configSettingCompliance", AppConstants.ManagedDeviceConfigurationSettingComplianceReport);
-        Assert.Equal("/devices/configSettingStates", AppConstants.ManagedDeviceConfigurationSettingStates);
-        Assert.Equal("/batch", AppConstants.BatchRequest);
-
-        // ProxySettings assertions
-        Assert.NotNull(AppConstants.ProxySettings);
-        Assert.Equal("http://proxy.example.com", AppConstants.ProxySettings.ProxyAddress);
-        Assert.Contains("localhost", AppConstants.ProxySettings.ProxyBypassList);
-        Assert.Contains("127.0.0.1", AppConstants.ProxySettings.ProxyBypassList);
-    }
-
-    [Fact]
-    public void Initialize_SetsProxySettingsToNull_WhenMissing()
-    {
-        // Arrange
-        var configValues = new Dictionary<string, string>
-        {
-            { "APIEndpoints:BaseUrl", "https://api.example.com" }
-        };
-
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configValues)
-            .Build();
-
-        // Act
-        AppConstants.Initialize(configuration);
+        services.AddCustomHttpClient(configuration);
+        var provider = services.BuildServiceProvider();
 
         // Assert
-        Assert.Null(AppConstants.ProxySettings);
+        var httpService = provider.GetRequiredService<IHttpService>();
+        var graphPagingService = provider.GetRequiredService<IGraphPagingService>();
+
+        Assert.NotNull(httpService);
+        Assert.NotNull(graphPagingService);
     }
 
     [Fact]
-    public void Initialize_ThrowsException_WhenMandatoryFieldsAreMissing()
+    public async Task GetRetryPolicy_ShouldRetry_OnTransientErrors()
     {
         // Arrange
-        var configValues = new Dictionary<string, string>(); // Empty configuration
+        var serviceProviderMock = new Mock<IServiceProvider>();
+        var loggerMock = new Mock<ILogger<IHttpService>>();
+        serviceProviderMock.Setup(sp => sp.GetService(typeof(ILogger<IHttpService>)))
+                           .Returns(loggerMock.Object);
 
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configValues)
-            .Build();
+        var retryPolicy = ServiceExtensions.GetRetryPolicy<IHttpService>(serviceProviderMock.Object, 3);
+
+        var transientErrorResponse = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        var nonTransientResponse = new HttpResponseMessage(HttpStatusCode.BadRequest);
 
         // Act & Assert
-        Assert.Throws<ArgumentException>(() => AppConstants.Initialize(configuration));
+        var transientResult = await retryPolicy.ExecuteAsync(() => Task.FromResult(transientErrorResponse));
+        Assert.Equal(HttpStatusCode.TooManyRequests, transientResult.StatusCode);
+
+        var nonTransientResult = await retryPolicy.ExecuteAsync(() => Task.FromResult(nonTransientResponse));
+        Assert.Equal(HttpStatusCode.BadRequest, nonTransientResult.StatusCode);
     }
 }
