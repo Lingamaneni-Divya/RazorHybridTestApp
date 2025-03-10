@@ -32,7 +32,25 @@ public class CommandRepositoryTests
     {
         _mockConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
         _mockConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-        _mockCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(throwException ? throw new SqlException() : 1);
+        
+        if (throwException)
+        {
+            _mockCommand.Setup(c => c.ExecuteNonQueryAsync()).ThrowsAsync(CreateSqlException());
+        }
+        else
+        {
+            _mockCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(1);
+        }
+    }
+
+    private SqlException CreateSqlException()
+    {
+        var sqlErrorCollection = (SqlErrorCollection)Activator.CreateInstance(typeof(SqlErrorCollection), true);
+        var sqlError = (SqlError)Activator.CreateInstance(typeof(SqlError), true);
+        typeof(SqlErrorCollection).GetMethod("Add", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(sqlErrorCollection, new object[] { sqlError });
+
+        var sqlException = (SqlException)Activator.CreateInstance(typeof(SqlException), true);
+        return sqlException;
     }
 
     [Fact]
