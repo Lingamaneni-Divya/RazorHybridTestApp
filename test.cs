@@ -30,7 +30,7 @@ public class CommandRepositoryTests
         SqlParameter[] parameters = { new SqlParameter("@Id", 1) };
 
         // Act
-        await _repository.ExecuteAsync(commandText, CommandType.Text, parameters);
+        await _repository.ExecuteAsync<TestUser>(commandText, CommandType.Text, parameters);
 
         // Assert - No exceptions mean success
         Assert.True(true);
@@ -43,7 +43,7 @@ public class CommandRepositoryTests
         string commandText = "INVALID SQL SYNTAX"; 
 
         // Act & Assert
-        await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteAsync(commandText, CommandType.Text));
+        await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteAsync<TestUser>(commandText, CommandType.Text));
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public class CommandRepositoryTests
         };
 
         // Act
-        await _repository.ExecuteBatchAsync(commandText, CommandType.Text, dataList);
+        await _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList);
 
         // Assert - No exceptions mean success
         Assert.True(true);
@@ -73,7 +73,27 @@ public class CommandRepositoryTests
         List<TestUser> dataList = new List<TestUser> { new TestUser { Id = 1, Name = "Alice" } };
 
         // Act & Assert
-        await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteBatchAsync(commandText, CommandType.Text, dataList));
+        await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList));
+    }
+
+    [Fact]
+    public async Task ExecuteBatchAsync_Should_Split_Into_Batches_Correctly()
+    {
+        // Arrange
+        string commandText = "INSERT INTO Users (Id, Name) VALUES (@Id, @Name)";
+        List<TestUser> dataList = new List<TestUser>();
+
+        // Creating a list of 2500 users to trigger batching logic
+        for (int i = 1; i <= 2500; i++)
+        {
+            dataList.Add(new TestUser { Id = i, Name = $"User{i}" });
+        }
+
+        // Act
+        await _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList, batchSize: 1000);
+
+        // Assert - No exceptions mean success
+        Assert.True(true);
     }
 
     private class TestUser
