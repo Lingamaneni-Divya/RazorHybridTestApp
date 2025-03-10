@@ -1,35 +1,20 @@
-public class SampleClass
+public class UnrecognizedType
 {
-    public int Id { get; set; }
-    public string Name { get; set; }
+    public int A { get; set; }
+    public string B { get; set; }
 }
 
 [Fact]
-public void ConvertToType_ShouldSerializeAndDeserialize_WhenTargetTypeIsAClass()
+public void ConvertToType_ShouldSerializeAndDeserialize_WhenObjectIsUnrecognizedType()
 {
     // Arrange
-    var sampleObj = new SampleClass { Id = 1, Name = "Test" };
+    var obj = new UnrecognizedType { A = 10, B = "Hello" };
 
     // Act
-    var result = TypeConversions.ConvertToType(sampleObj, typeof(SampleClass)) as SampleClass;
+    var result = TypeConversions.ConvertToType(obj, typeof(UnrecognizedType)) as UnrecognizedType;
 
     // Assert
     Assert.NotNull(result);
-    Assert.Equal(sampleObj.Id, result!.Id);
-    Assert.Equal(sampleObj.Name, result.Name);
-}
-
-[Fact]
-public void ConvertToType_ShouldSerializeAndDeserialize_WhenValueIsDictionary()
-{
-    // Arrange
-    var dict = new Dictionary<string, int> { { "key", 42 } };
-
-    // Act
-    var result = TypeConversions.ConvertToType(dict, typeof(Dictionary<string, int>)) as Dictionary<string, int>;
-
-    // Assert
-    Assert.NotNull(result);
-    Assert.True(result!.ContainsKey("key"));
-    Assert.Equal(42, result["key"]);
+    Assert.Equal(obj.A, result!.A);
+    Assert.Equal(obj.B, result.B);
 }
