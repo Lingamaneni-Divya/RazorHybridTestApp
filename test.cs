@@ -12,7 +12,8 @@ namespace IntuneMobilityViolation.Job.Tests
     {
         private readonly Mock<IConfiguration> _mockConfig;
         private readonly IServiceCollection _services;
-
+var authMock = new Mock<IAUTHTokenService>();
+_services.AddSingleton(authMock.Object);
         public ServiceExtensionsTests()
         {
             _mockConfig = new Mock<IConfiguration>();
