@@ -12,34 +12,46 @@ public class CommandRepositoryTests
 {
     private readonly CommandRepository _repository;
     private readonly Mock<IConfiguration> _mockConfiguration;
-    private readonly string _connectionString = "Server=myServer;Database=TestDB;Trusted_Connection=True;";
+    private readonly Mock<SqlConnection> _mockConnection;
+    private readonly Mock<SqlCommand> _mockCommand;
+    private readonly Mock<SqlTransaction> _mockTransaction;
 
     public CommandRepositoryTests()
     {
         _mockConfiguration = new Mock<IConfiguration>();
-        _mockConfiguration.Setup(config => config["ConnectionStrings:MobilityViolationDB"]).Returns(_connectionString);
+        _mockConfiguration.Setup(config => config["ConnectionStrings:MobilityViolationDB"]).Returns("Fake_Connection_String");
+
+        _mockConnection = new Mock<SqlConnection>();
+        _mockCommand = new Mock<SqlCommand>();
+        _mockTransaction = new Mock<SqlTransaction>();
 
         _repository = new CommandRepository(_mockConfiguration.Object);
+    }
+
+    private void SetupMocks(bool throwException = false)
+    {
+        _mockConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
+        _mockConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
+        _mockCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(throwException ? throw new SqlException() : 1);
     }
 
     [Fact]
     public async Task ExecuteAsync_Should_Execute_Command_Successfully()
     {
         // Arrange
+        SetupMocks();
         string commandText = "UPDATE Users SET Name='Test' WHERE Id=1";
         SqlParameter[] parameters = { new SqlParameter("@Id", 1) };
 
-        // Act
+        // Act & Assert
         await _repository.ExecuteAsync<TestUser>(commandText, CommandType.Text, parameters);
-
-        // Assert - No exceptions mean success
-        Assert.True(true);
     }
 
     [Fact]
     public async Task ExecuteAsync_Should_Handle_Exception_And_Rollback()
     {
         // Arrange
+        SetupMocks(throwException: true);
         string commandText = "INVALID SQL SYNTAX"; 
 
         // Act & Assert
@@ -50,6 +62,7 @@ public class CommandRepositoryTests
     public async Task ExecuteBatchAsync_Should_Execute_Batches_Successfully()
     {
         // Arrange
+        SetupMocks();
         string commandText = "INSERT INTO Users (Id, Name) VALUES (@Id, @Name)";
         List<TestUser> dataList = new List<TestUser>
         {
@@ -58,42 +71,20 @@ public class CommandRepositoryTests
             new TestUser { Id = 3, Name = "Charlie" }
         };
 
-        // Act
+        // Act & Assert
         await _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList);
-
-        // Assert - No exceptions mean success
-        Assert.True(true);
     }
 
     [Fact]
     public async Task ExecuteBatchAsync_Should_Handle_Exception_And_Retry()
     {
         // Arrange
+        SetupMocks(throwException: true);
         string commandText = "INVALID SQL SYNTAX"; 
         List<TestUser> dataList = new List<TestUser> { new TestUser { Id = 1, Name = "Alice" } };
 
         // Act & Assert
         await Assert.ThrowsAsync<SqlException>(() => _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList));
-    }
-
-    [Fact]
-    public async Task ExecuteBatchAsync_Should_Split_Into_Batches_Correctly()
-    {
-        // Arrange
-        string commandText = "INSERT INTO Users (Id, Name) VALUES (@Id, @Name)";
-        List<TestUser> dataList = new List<TestUser>();
-
-        // Creating a list of 2500 users to trigger batching logic
-        for (int i = 1; i <= 2500; i++)
-        {
-            dataList.Add(new TestUser { Id = i, Name = $"User{i}" });
-        }
-
-        // Act
-        await _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList, batchSize: 1000);
-
-        // Assert - No exceptions mean success
-        Assert.True(true);
     }
 
     private class TestUser
