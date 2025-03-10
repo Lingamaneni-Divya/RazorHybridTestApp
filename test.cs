@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -12,7 +13,7 @@ public class CommandRepositoryTests
 {
     private readonly CommandRepository _repository;
     private readonly Mock<IConfiguration> _mockConfiguration;
-    private readonly Mock<DbConnection> _mockConnection;
+    private readonly Mock<MockDbConnection> _mockConnection;
     private readonly Mock<DbCommand> _mockCommand;
     private readonly Mock<DbTransaction> _mockTransaction;
 
@@ -21,7 +22,7 @@ public class CommandRepositoryTests
         _mockConfiguration = new Mock<IConfiguration>();
         _mockConfiguration.Setup(config => config["ConnectionStrings:MobilityViolationDB"]).Returns("Fake_Connection_String");
 
-        _mockConnection = new Mock<DbConnection>();
+        _mockConnection = new Mock<MockDbConnection> { CallBase = true };
         _mockCommand = new Mock<DbCommand>();
         _mockTransaction = new Mock<DbTransaction>();
 
@@ -30,19 +31,18 @@ public class CommandRepositoryTests
 
     private void SetupMocks(bool throwException = false)
     {
-        // Simulate Opening Connection
-        _mockConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
+        _mockConnection.Setup(c => c.OpenAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _mockConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
         _mockCommand.Setup(c => c.Connection).Returns(_mockConnection.Object);
         _mockCommand.Setup(c => c.Transaction).Returns(_mockTransaction.Object);
 
         if (throwException)
         {
-            _mockCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ThrowsAsync(new Exception("SQL Error"));
+            _mockCommand.Setup(c => c.ExecuteNonQueryAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new Exception("SQL Error"));
         }
         else
         {
-            _mockCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ReturnsAsync(1);
+            _mockCommand.Setup(c => c.ExecuteNonQueryAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
         }
     }
 
@@ -102,5 +102,11 @@ public class CommandRepositoryTests
     {
         public int Id { get; set; }
         public string Name { get; set; }
+    }
+
+    // Custom Mock Class to Allow OpenAsync() Mocking
+    public abstract class MockDbConnection : DbConnection
+    {
+        public override Task OpenAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
