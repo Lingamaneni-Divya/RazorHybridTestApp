@@ -10,8 +10,8 @@ public void ValuesToObject_ValidInput_ShouldReturnListOfObjects()
     
     var schema = new List<Schema>
     {
-        new Schema { Column = "Id" },
-        new Schema { Column = "Name" }
+        new Schema { Column = "Id", PropertyType = typeof(int) },
+        new Schema { Column = "Name", PropertyType = typeof(string) }
     };
 
     // Act
@@ -43,7 +43,10 @@ public void ValuesToObject_NullSchema_ShouldReturnNull()
 public void ValuesToObject_NullValues_ShouldReturnNull()
 {
     // Arrange
-    var schema = new List<Schema> { new Schema { Column = "Id" } };
+    var schema = new List<Schema>
+    {
+        new Schema { Column = "Id", PropertyType = typeof(int) }
+    };
 
     // Act
     var result = TypeConversions.ValuesToObject<TestModel>(null, schema);
@@ -57,7 +60,10 @@ public void ValuesToObject_EmptyValues_ShouldReturnEmptyList()
 {
     // Arrange
     var values = new List<List<object>>();
-    var schema = new List<Schema> { new Schema { Column = "Id" } };
+    var schema = new List<Schema>
+    {
+        new Schema { Column = "Id", PropertyType = typeof(int) }
+    };
 
     // Act
     var result = TypeConversions.ValuesToObject<TestModel>(values, schema);
@@ -72,7 +78,10 @@ public void ValuesToObject_MissingSchemaColumn_ShouldSkipProperty()
 {
     // Arrange
     var values = new List<List<object>> { new() { 1, "Alice" } };
-    var schema = new List<Schema> { new Schema { Column = "Id" } }; // Missing "Name"
+    var schema = new List<Schema>
+    {
+        new Schema { Column = "Id", PropertyType = typeof(int) } //  Missing "Name" column
+    };
 
     // Act
     var result = TypeConversions.ValuesToObject<TestModel>(values, schema);
@@ -81,5 +90,5 @@ public void ValuesToObject_MissingSchemaColumn_ShouldSkipProperty()
     Assert.NotNull(result);
     Assert.Single(result);
     Assert.Equal(1, result[0].Id);
-    Assert.Null(result[0].Name); // Name property is missing in schema
+    Assert.Null(result[0].Name); // Name property is missing in schema, so should be null
 }
