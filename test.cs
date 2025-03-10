@@ -1,111 +1,143 @@
-public class SourceModel
-{
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public List<string> Tags { get; set; }
-}
-
-public class TargetModel
-{
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public string Tags { get; set; } // Converted from List<string> to CSV string
-}
-
 public class TypeConversionsTests
 {
+    [Theory]
+    [InlineData(null, typeof(int?), null)] // ✅ Null value
+    [InlineData("123", typeof(int), 123)] // ✅ String to Int
+    [InlineData("true", typeof(bool), true)] // ✅ String to Bool
+    [InlineData("3.14", typeof(double), 3.14)] // ✅ String to Double
+    [InlineData("2024-03-05", typeof(DateTime), "2024-03-05")] // ✅ String to DateTime
+    public void ConvertToType_ShouldConvertSimpleTypes(object input, Type targetType, object expected)
+    {
+        // Act
+        var result = TypeConversions.ConvertToType(input, targetType);
+
+        // Assert
+        Assert.Equal(expected, result);
+    }
 
     [Fact]
-    public void ConvertObjectToT_ValidConversion_ShouldReturnConvertedObject()
+    public void ConvertToType_ShouldConvertNullableType()
     {
         // Arrange
-        var source = new SourceModel
-        {
-            Id = 1,
-            Name = "Alice",
-            Tags = new List<string> { "Tag1", "Tag2" }
-        };
+        object input = "42";
 
         // Act
-        var result = TypeConversions.ConvertObjectToT<TargetModel>(source);
+        var result = TypeConversions.ConvertToType(input, typeof(int?));
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(1, result.Id);
-        Assert.Equal("Alice", result.Name);
-        Assert.Equal("Tag1,Tag2", result.Tags); // ✅ Should be converted to CSV format
+        Assert.IsType<int>(result);
+        Assert.Equal(42, result);
     }
 
     [Fact]
-    public void ConvertObjectToT_SourceHasMoreProperties_ShouldIgnoreExtraProperties()
+    public void ConvertToType_ShouldConvertEnum()
     {
         // Arrange
-        var source = new
-        {
-            Id = 1,
-            Name = "Bob",
-            ExtraField = "Ignore me"
-        };
+        object input = "Friday";
 
         // Act
-        var result = TypeConversions.ConvertObjectToT<TargetModel>(source);
+        var result = TypeConversions.ConvertToType(input, typeof(DayOfWeek));
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(1, result.Id);
-        Assert.Equal("Bob", result.Name);
-        Assert.Null(result.Tags); // ✅ Tags property is missing, so it should be null
+        Assert.IsType<DayOfWeek>(result);
+        Assert.Equal(DayOfWeek.Friday, result);
     }
 
     [Fact]
-    public void ConvertObjectToT_SourceHasMissingProperties_ShouldNotThrow()
+    public void ConvertToType_InvalidEnumValue_ShouldReturnNull()
     {
         // Arrange
-        var source = new { Id = 42 }; // Missing Name and Tags
+        object input = "InvalidDay";
 
         // Act
-        var result = TypeConversions.ConvertObjectToT<TargetModel>(source);
+        var result = TypeConversions.ConvertToType(input, typeof(DayOfWeek));
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ConvertToType_ShouldConvertGuid()
+    {
+        // Arrange
+        object input = "3F2504E0-4F89-11D3-9A0C-0305E82C3301";
+
+        // Act
+        var result = TypeConversions.ConvertToType(input, typeof(Guid));
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(42, result.Id);
-        Assert.Null(result.Name);
-        Assert.Null(result.Tags);
+        Assert.IsType<Guid>(result);
+        Assert.Equal(Guid.Parse("3F2504E0-4F89-11D3-9A0C-0305E82C3301"), result);
     }
 
     [Fact]
-    public void ConvertObjectToT_NullSource_ShouldThrowArgumentNullException()
-    {
-        // Act & Assert
-        Assert.Throws<ArgumentNullException>(() => TypeConversions.ConvertObjectToT<TargetModel>(null));
-    }
-
-    [Fact]
-    public void ConvertObjectToT_PropertyTypeMismatch_ShouldNotAssignValue()
+    public void ConvertToType_InvalidGuid_ShouldReturnNull()
     {
         // Arrange
-        var source = new { Id = "NotAnInt", Name = "Test" };
-
-        // Act & Assert
-        Assert.Throws<InvalidCastException>(() => TypeConversions.ConvertObjectToT<TargetModel>(source));
-    }
-
-    [Fact]
-    public void ConvertObjectToT_EnumerableToStringConversion_ShouldWork()
-    {
-        // Arrange
-        var source = new SourceModel
-        {
-            Id = 5,
-            Name = "Eve",
-            Tags = new List<string> { "X", "Y", "Z" }
-        };
+        object input = "Invalid-Guid";
 
         // Act
-        var result = TypeConversions.ConvertObjectToT<TargetModel>(source);
+        var result = TypeConversions.ConvertToType(input, typeof(Guid));
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ConvertToType_ShouldHandleConvertibleType()
+    {
+        // Arrange
+        object input = "456";
+
+        // Act
+        var result = TypeConversions.ConvertToType(input, typeof(int));
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal("X,Y,Z", result.Tags); // ✅ List converted to CSV string
+        Assert.IsType<int>(result);
+        Assert.Equal(456, result);
+    }
+
+    [Fact]
+    public void ConvertToType_ShouldReturnSameType_WhenAlreadyMatching()
+    {
+        // Arrange
+        object input = 789;
+
+        // Act
+        var result = TypeConversions.ConvertToType(input, typeof(int));
+
+        // Assert
+        Assert.Equal(789, result);
+    }
+
+    [Fact]
+    public void ConvertToType_ShouldSerializeAndDeserializeComplexType()
+    {
+        // Arrange
+        var input = new { Name = "Alice", Age = 30 };
+
+        // Act
+        var result = TypeConversions.ConvertToType(input, input.GetType());
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal(JsonSerializer.Serialize(input), JsonSerializer.Serialize(result));
+    }
+
+    [Fact]
+    public void ConvertToType_ShouldReturnNull_WhenConversionFails()
+    {
+        // Arrange
+        object input = "NotANumber";
+
+        // Act
+        var result = TypeConversions.ConvertToType(input, typeof(int));
+
+        // Assert
+        Assert.Null(result);
     }
 }
