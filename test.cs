@@ -25,9 +25,12 @@ public class CommandRepositoryTests
         _mockConfig = new Mock<IConfiguration>();
         _mockConfig.Setup(c => c["ConnectionStrings:MobilityViolenceWriteDB"]).Returns(_validConnectionString);
 
-        _mockDbConnection = new Mock<DbConnection>(); // Use DbConnection instead of SqlConnection
+        _mockDbConnection = new Mock<DbConnection>(); 
         _mockDbCommand = new Mock<DbCommand>();
         _mockDbTransaction = new Mock<DbTransaction>();
+
+        _mockDbConnection.Setup(c => c.CreateCommand()).Returns(_mockDbCommand.Object);
+        _mockDbConnection.Setup(c => c.BeginTransaction()).Returns(_mockDbTransaction.Object);
 
         _commandRepository = new CommandRepository(_mockConfig.Object);
     }
@@ -44,8 +47,6 @@ public class CommandRepositoryTests
     {
         // Arrange
         var commandText = "INSERT INTO SampleTable VALUES ('test')";
-        _mockDbConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
-        _mockDbConnection.Setup(c => c.BeginTransaction()).Returns(_mockDbTransaction.Object);
         _mockDbCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ThrowsAsync(CreateSqlException());
 
         // Act
@@ -63,8 +64,6 @@ public class CommandRepositoryTests
         var dataList = new List<string> { "value1", "value2", "value3" };
         int retryCount = 0;
 
-        _mockDbConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
-        _mockDbConnection.Setup(c => c.BeginTransaction()).Returns(_mockDbTransaction.Object);
         _mockDbCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ReturnsAsync(() =>
         {
             retryCount++;
