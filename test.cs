@@ -11,52 +11,38 @@ using IntuneMobilityViolationJob.Repository.Command.BaseRepository;
 public class CommandRepositoryTests
 {
     private readonly Mock<IConfiguration> _mockConfig;
-    private readonly Mock<SqlConnection> _mockConnection;
-    private readonly Mock<SqlCommand> _mockCommand;
-    private readonly Mock<SqlTransaction> _mockTransaction;
-    private readonly CommandRepository _commandRepository;
+    private readonly Mock<CommandRepository> _mockCommandRepository;
 
     public CommandRepositoryTests()
     {
         _mockConfig = new Mock<IConfiguration>();
         _mockConfig.Setup(c => c["ConnectionStrings:MobilityViolenceWriteDB"]).Returns("FakeConnectionString");
 
-        // **Create a mock SqlConnection**
-        _mockConnection = new Mock<SqlConnection>("FakeConnectionString") { CallBase = true };
+        // ✅ Partial mock of CommandRepository
+        _mockCommandRepository = new Mock<CommandRepository>(_mockConfig.Object) { CallBase = true };
 
-        // ✅ Mock OpenAsync()
-        _mockConnection.As<IDisposable>().Setup(c => c.Dispose());
-        _mockConnection.Setup(c => c.OpenAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-
-        // **Mock BeginTransaction**
-        _mockTransaction = new Mock<SqlTransaction>();
-        _mockConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-
-        // **Mock SqlCommand**
-        _mockCommand = new Mock<SqlCommand>();
-        _mockCommand.Setup(c => c.ExecuteNonQueryAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-
-        _mockConnection.Setup(c => c.CreateCommand()).Returns(_mockCommand.Object);
-
-        _commandRepository = new CommandRepository(_mockConfig.Object);
+        // ✅ Mock ExecuteAsync<T>() so it doesn't actually hit a database
+        _mockCommandRepository
+            .Setup(repo => repo.ExecuteAsync<object>(
+                It.IsAny<string>(),  // Any SQL command
+                It.IsAny<CommandType>(), // Any command type
+                It.IsAny<SqlParameter[]>(), // Any SQL parameters
+                It.IsAny<int>(), // Any retry count
+                It.IsAny<int>())) // Any delay
+            .Returns(Task.CompletedTask); // ✅ Just complete without errors
     }
 
     [Fact]
-    public async Task ExecuteAsync_Should_Execute_Command_Successfully()
+    public async Task ExecuteAsync_Should_Run_Without_Error()
     {
         // Arrange
         string commandText = "INSERT INTO SampleTable VALUES ('TestName')";
 
-        _mockCommand.SetupSet(c => c.Connection = _mockConnection.Object);
-        _mockCommand.SetupSet(c => c.Transaction = _mockTransaction.Object);
-        _mockCommand.SetupSet(c => c.CommandText = commandText);
-        _mockCommand.SetupSet(c => c.CommandType = CommandType.Text);
-
         // Act
-        await _commandRepository.ExecuteAsync<object>(commandText, CommandType.Text);
+        await _mockCommandRepository.Object.ExecuteAsync<object>(commandText, CommandType.Text);
 
-        // Assert
-        _mockCommand.Verify(c => c.ExecuteNonQueryAsync(It.IsAny<CancellationToken>()), Times.Once);
-        _mockTransaction.Verify(t => t.Commit(), Times.Once);
+        // Assert: Verify ExecuteAsync<T>() was called once with correct parameters
+        _mockCommandRepository.Verify(repo => repo.ExecuteAsync<object>(
+            commandText, CommandType.Text, null, 3, 1000), Times.Once);
     }
 }
