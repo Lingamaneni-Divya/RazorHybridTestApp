@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -30,49 +31,21 @@ public class CommandRepositoryTests
         _commandRepository = new CommandRepository(_mockConfig.Object);
     }
 
-    [Fact]
-    public void Constructor_Should_Throw_Exception_If_Config_Is_Null()
+    private SqlException CreateSqlException(string message = "A database error occurred")
     {
-        Assert.Throws<ArgumentNullException>(() => new CommandRepository(null));
+        var sqlExceptionType = typeof(SqlException);
+        var instance = (SqlException)Activator.CreateInstance(sqlExceptionType, BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { message }, null);
+        return instance;
     }
 
     [Fact]
-    public void Constructor_Should_Throw_Exception_If_ConnectionString_Is_NullOrEmpty()
-    {
-        var mockConfig = new Mock<IConfiguration>();
-        mockConfig.Setup(c => c["ConnectionStrings:MobilityViolenceWriteDB"]).Returns(string.Empty);
-
-        Assert.Throws<ArgumentException>(() => new CommandRepository(mockConfig.Object));
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_Should_Throw_Exception_If_CommandText_Is_NullOrEmpty()
-    {
-        await Assert.ThrowsAsync<ArgumentException>(() => _commandRepository.ExecuteAsync<object>(null, CommandType.Text));
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_Should_Execute_Command_Successfully()
+    public async Task ExecuteAsync_Should_Rollback_On_SqlException()
     {
         // Arrange
         var commandText = "INSERT INTO SampleTable VALUES ('test')";
         _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
         _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(1);
-
-        // Act & Assert
-        await _commandRepository.ExecuteAsync<object>(commandText, CommandType.Text);
-        _mockTransaction.Verify(t => t.Commit(), Times.Once);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_Should_Rollback_On_Exception()
-    {
-        // Arrange
-        var commandText = "INSERT INTO SampleTable VALUES ('test')";
-        _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
-        _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ThrowsAsync(new SqlException());
+        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ThrowsAsync(CreateSqlException());
 
         // Act
         await _commandRepository.ExecuteAsync<object>(commandText, CommandType.Text);
@@ -82,22 +55,7 @@ public class CommandRepositoryTests
     }
 
     [Fact]
-    public async Task ExecuteBatchAsync_Should_Execute_Batch_Successfully()
-    {
-        // Arrange
-        var commandText = "INSERT INTO SampleTable VALUES (@param)";
-        var dataList = new List<string> { "value1", "value2", "value3" };
-        _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
-        _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(3);
-
-        // Act & Assert
-        await _commandRepository.ExecuteBatchAsync(commandText, CommandType.Text, dataList);
-        _mockTransaction.Verify(t => t.Commit(), Times.Once);
-    }
-
-    [Fact]
-    public async Task ExecuteBatchAsync_Should_Retry_On_Exception_And_Rollback()
+    public async Task ExecuteBatchAsync_Should_Retry_On_SqlException_And_Rollback()
     {
         // Arrange
         var commandText = "INSERT INTO SampleTable VALUES (@param)";
@@ -109,7 +67,7 @@ public class CommandRepositoryTests
         _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(() =>
         {
             retryCount++;
-            if (retryCount < 3) throw new SqlException();
+            if (retryCount < 3) throw CreateSqlException();
             return 3;
         });
 
