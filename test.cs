@@ -1,112 +1,123 @@
-using IntuneMobilityViolationJob.Repository.Command.BaseRepository;
-using Microsoft.Extensions.Configuration;
-using Moq;
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.Common;
-using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using Moq;
 using Xunit;
+using IntuneMobilityViolationJob.Repository.Command.BaseRepository;
+using GuardAgainstLib;
 
 public class CommandRepositoryTests
 {
-    private readonly CommandRepository _repository;
-    private readonly Mock<IConfiguration> _mockConfiguration;
-    private readonly Mock<MockDbConnection> _mockConnection;
-    private readonly Mock<DbCommand> _mockCommand;
-    private readonly Mock<DbTransaction> _mockTransaction;
+    private readonly Mock<IConfiguration> _mockConfig;
+    private readonly Mock<SqlConnection> _mockSqlConnection;
+    private readonly Mock<SqlCommand> _mockSqlCommand;
+    private readonly Mock<SqlTransaction> _mockTransaction;
+    private readonly CommandRepository _commandRepository;
+    private readonly string _validConnectionString = "Server=myServer;Database=myDB;User Id=myUser;Password=myPassword;";
 
     public CommandRepositoryTests()
     {
-        _mockConfiguration = new Mock<IConfiguration>();
-        _mockConfiguration.Setup(config => config["ConnectionStrings:MobilityViolationDB"]).Returns("Fake_Connection_String");
+        _mockConfig = new Mock<IConfiguration>();
+        _mockConfig.Setup(c => c["ConnectionStrings:MobilityViolenceWriteDB"]).Returns(_validConnectionString);
 
-        _mockConnection = new Mock<MockDbConnection> { CallBase = true };
-        _mockCommand = new Mock<DbCommand>();
-        _mockTransaction = new Mock<DbTransaction>();
+        _mockSqlConnection = new Mock<SqlConnection>();
+        _mockSqlCommand = new Mock<SqlCommand>();
+        _mockTransaction = new Mock<SqlTransaction>();
 
-        _repository = new CommandRepository(_mockConfiguration.Object);
+        _commandRepository = new CommandRepository(_mockConfig.Object);
     }
 
-    private void SetupMocks(bool throwException = false)
+    [Fact]
+    public void Constructor_Should_Throw_Exception_If_Config_Is_Null()
     {
-        _mockConnection.Setup(c => c.OpenAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        _mockConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-        _mockCommand.Setup(c => c.Connection).Returns(_mockConnection.Object);
-        _mockCommand.Setup(c => c.Transaction).Returns(_mockTransaction.Object);
+        Assert.Throws<ArgumentNullException>(() => new CommandRepository(null));
+    }
 
-        if (throwException)
-        {
-            _mockCommand.Setup(c => c.ExecuteNonQueryAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new Exception("SQL Error"));
-        }
-        else
-        {
-            _mockCommand.Setup(c => c.ExecuteNonQueryAsync(It.IsAny<CancellationToken>())).ReturnsAsync(1);
-        }
+    [Fact]
+    public void Constructor_Should_Throw_Exception_If_ConnectionString_Is_NullOrEmpty()
+    {
+        var mockConfig = new Mock<IConfiguration>();
+        mockConfig.Setup(c => c["ConnectionStrings:MobilityViolenceWriteDB"]).Returns(string.Empty);
+
+        Assert.Throws<ArgumentException>(() => new CommandRepository(mockConfig.Object));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Should_Throw_Exception_If_CommandText_Is_NullOrEmpty()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _commandRepository.ExecuteAsync<object>(null, CommandType.Text));
     }
 
     [Fact]
     public async Task ExecuteAsync_Should_Execute_Command_Successfully()
     {
         // Arrange
-        SetupMocks();
-        string commandText = "UPDATE Users SET Name='Test' WHERE Id=1";
-        SqlParameter[] parameters = { new SqlParameter("@Id", 1) };
+        var commandText = "INSERT INTO SampleTable VALUES ('test')";
+        _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
+        _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
+        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(1);
 
         // Act & Assert
-        await _repository.ExecuteAsync<TestUser>(commandText, CommandType.Text, parameters);
+        await _commandRepository.ExecuteAsync<object>(commandText, CommandType.Text);
+        _mockTransaction.Verify(t => t.Commit(), Times.Once);
     }
 
     [Fact]
-    public async Task ExecuteAsync_Should_Handle_Exception_And_Rollback()
+    public async Task ExecuteAsync_Should_Rollback_On_Exception()
     {
         // Arrange
-        SetupMocks(throwException: true);
-        string commandText = "INVALID SQL SYNTAX"; 
+        var commandText = "INSERT INTO SampleTable VALUES ('test')";
+        _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
+        _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
+        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ThrowsAsync(new SqlException());
 
-        // Act & Assert
-        await Assert.ThrowsAsync<Exception>(() => _repository.ExecuteAsync<TestUser>(commandText, CommandType.Text));
+        // Act
+        await _commandRepository.ExecuteAsync<object>(commandText, CommandType.Text);
+
+        // Assert
+        _mockTransaction.Verify(t => t.Rollback(), Times.Once);
     }
 
     [Fact]
-    public async Task ExecuteBatchAsync_Should_Execute_Batches_Successfully()
+    public async Task ExecuteBatchAsync_Should_Execute_Batch_Successfully()
     {
         // Arrange
-        SetupMocks();
-        string commandText = "INSERT INTO Users (Id, Name) VALUES (@Id, @Name)";
-        List<TestUser> dataList = new List<TestUser>
+        var commandText = "INSERT INTO SampleTable VALUES (@param)";
+        var dataList = new List<string> { "value1", "value2", "value3" };
+        _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
+        _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
+        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(3);
+
+        // Act & Assert
+        await _commandRepository.ExecuteBatchAsync(commandText, CommandType.Text, dataList);
+        _mockTransaction.Verify(t => t.Commit(), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteBatchAsync_Should_Retry_On_Exception_And_Rollback()
+    {
+        // Arrange
+        var commandText = "INSERT INTO SampleTable VALUES (@param)";
+        var dataList = new List<string> { "value1", "value2", "value3" };
+        int retryCount = 0;
+
+        _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
+        _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
+        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(() =>
         {
-            new TestUser { Id = 1, Name = "Alice" },
-            new TestUser { Id = 2, Name = "Bob" },
-            new TestUser { Id = 3, Name = "Charlie" }
-        };
+            retryCount++;
+            if (retryCount < 3) throw new SqlException();
+            return 3;
+        });
 
-        // Act & Assert
-        await _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList);
-    }
+        // Act
+        await _commandRepository.ExecuteBatchAsync(commandText, CommandType.Text, dataList);
 
-    [Fact]
-    public async Task ExecuteBatchAsync_Should_Handle_Exception_And_Retry()
-    {
-        // Arrange
-        SetupMocks(throwException: true);
-        string commandText = "INVALID SQL SYNTAX"; 
-        List<TestUser> dataList = new List<TestUser> { new TestUser { Id = 1, Name = "Alice" } };
-
-        // Act & Assert
-        await Assert.ThrowsAsync<Exception>(() => _repository.ExecuteBatchAsync<TestUser>(commandText, CommandType.Text, dataList));
-    }
-
-    private class TestUser
-    {
-        public int Id { get; set; }
-        public string Name { get; set; }
-    }
-
-    // Custom Mock Class to Allow OpenAsync() Mocking
-    public abstract class MockDbConnection : DbConnection
-    {
-        public override Task OpenAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        // Assert
+        _mockTransaction.Verify(t => t.Rollback(), Times.Exactly(2)); // Rolled back twice before success
+        _mockTransaction.Verify(t => t.Commit(), Times.Once); // Committed on final retry
     }
 }
