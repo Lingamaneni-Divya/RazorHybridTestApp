@@ -14,7 +14,7 @@ using GuardAgainstLib;
 public class CommandRepositoryTests
 {
     private readonly Mock<IConfiguration> _mockConfig;
-    private readonly Mock<DbConnection> _mockDbConnection;
+    private readonly FakeDbConnection _fakeDbConnection;
     private readonly Mock<DbCommand> _mockDbCommand;
     private readonly Mock<DbTransaction> _mockDbTransaction;
     private readonly CommandRepository _commandRepository;
@@ -25,13 +25,10 @@ public class CommandRepositoryTests
         _mockConfig = new Mock<IConfiguration>();
         _mockConfig.Setup(c => c["ConnectionStrings:MobilityViolenceWriteDB"]).Returns(_validConnectionString);
 
-        _mockDbConnection = new Mock<DbConnection>(); 
         _mockDbCommand = new Mock<DbCommand>();
         _mockDbTransaction = new Mock<DbTransaction>();
 
-        _mockDbConnection.Setup(c => c.CreateCommand()).Returns(_mockDbCommand.Object);
-        _mockDbConnection.Setup(c => c.BeginTransaction()).Returns(_mockDbTransaction.Object);
-
+        _fakeDbConnection = new FakeDbConnection(_mockDbCommand.Object, _mockDbTransaction.Object);
         _commandRepository = new CommandRepository(_mockConfig.Object);
     }
 
@@ -78,4 +75,33 @@ public class CommandRepositoryTests
         _mockDbTransaction.Verify(t => t.Rollback(), Times.Exactly(2)); // Rolled back twice before success
         _mockDbTransaction.Verify(t => t.Commit(), Times.Once); // Committed on final retry
     }
+}
+
+// Custom FakeDbConnection to bypass Moq limitations
+public class FakeDbConnection : DbConnection
+{
+    private readonly DbCommand _dbCommand;
+    private readonly DbTransaction _dbTransaction;
+
+    public FakeDbConnection(DbCommand dbCommand, DbTransaction dbTransaction)
+    {
+        _dbCommand = dbCommand;
+        _dbTransaction = dbTransaction;
+    }
+
+    public override string ConnectionString { get; set; }
+
+    public override string Database => "FakeDB";
+    public override ConnectionState State => ConnectionState.Open;
+    public override string DataSource => "FakeDataSource";
+    public override string ServerVersion => "FakeVersion";
+
+    public override void Open() { }
+    public override Task OpenAsync() => Task.CompletedTask;
+    public override void Close() { }
+    public override void ChangeDatabase(string databaseName) { }
+    public override void Dispose() { }
+
+    protected override DbCommand CreateDbCommand() => _dbCommand;
+    protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => _dbTransaction;
 }
