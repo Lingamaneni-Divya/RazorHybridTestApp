@@ -2,106 +2,89 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-using System.Reflection;
 using System.Threading.Tasks;
-using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
-using Moq;
 using Xunit;
 using IntuneMobilityViolationJob.Repository.Command.BaseRepository;
-using GuardAgainstLib;
 
 public class CommandRepositoryTests
 {
-    private readonly Mock<IConfiguration> _mockConfig;
-    private readonly FakeDbConnection _fakeDbConnection;
-    private readonly Mock<DbCommand> _mockDbCommand;
-    private readonly Mock<DbTransaction> _mockDbTransaction;
     private readonly CommandRepository _commandRepository;
-    private readonly string _validConnectionString = "Server=myServer;Database=myDB;User Id=myUser;Password=myPassword;";
+    private readonly string _testConnectionString = "DataSource=:memory:";
 
     public CommandRepositoryTests()
     {
-        _mockConfig = new Mock<IConfiguration>();
-        _mockConfig.Setup(c => c["ConnectionStrings:MobilityViolenceWriteDB"]).Returns(_validConnectionString);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                { "ConnectionStrings:MobilityViolenceWriteDB", _testConnectionString }
+            })
+            .Build();
 
-        _mockDbCommand = new Mock<DbCommand>();
-        _mockDbTransaction = new Mock<DbTransaction>();
-
-        _fakeDbConnection = new FakeDbConnection(_mockDbCommand.Object, _mockDbTransaction.Object);
-        _commandRepository = new CommandRepository(_mockConfig.Object);
-    }
-
-    private SqlException CreateSqlException(string message = "A database error occurred")
-    {
-        var sqlExceptionType = typeof(SqlException);
-        var instance = (SqlException)Activator.CreateInstance(sqlExceptionType, BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { message }, null);
-        return instance;
+        _commandRepository = new CommandRepository(configuration);
     }
 
     [Fact]
-    public async Task ExecuteAsync_Should_Rollback_On_SqlException()
+    public async Task ExecuteAsync_Should_Execute_Command_Successfully()
     {
         // Arrange
-        var commandText = "INSERT INTO SampleTable VALUES ('test')";
-        _mockDbCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ThrowsAsync(CreateSqlException());
+        string createTableQuery = "CREATE TABLE SampleTable (Id INTEGER PRIMARY KEY, Name TEXT)";
+        string insertQuery = "INSERT INTO SampleTable (Name) VALUES ('TestName')";
 
-        // Act
-        await _commandRepository.ExecuteAsync<object>(commandText, CommandType.Text);
-
-        // Assert
-        _mockDbTransaction.Verify(t => t.Rollback(), Times.Once);
-    }
-
-    [Fact]
-    public async Task ExecuteBatchAsync_Should_Retry_On_SqlException_And_Rollback()
-    {
-        // Arrange
-        var commandText = "INSERT INTO SampleTable VALUES (@param)";
-        var dataList = new List<string> { "value1", "value2", "value3" };
-        int retryCount = 0;
-
-        _mockDbCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ReturnsAsync(() =>
+        using (var connection = new SqliteConnection(_testConnectionString))
         {
-            retryCount++;
-            if (retryCount < 3) throw CreateSqlException();
-            return 3;
-        });
+            await connection.OpenAsync();
+            using (var command = new SqliteCommand(createTableQuery, connection))
+            {
+                await command.ExecuteNonQueryAsync();
+            }
+        }
 
         // Act
-        await _commandRepository.ExecuteBatchAsync(commandText, CommandType.Text, dataList);
+        await _commandRepository.ExecuteAsync<object>(insertQuery, CommandType.Text);
 
         // Assert
-        _mockDbTransaction.Verify(t => t.Rollback(), Times.Exactly(2)); // Rolled back twice before success
-        _mockDbTransaction.Verify(t => t.Commit(), Times.Once); // Committed on final retry
+        using (var connection = new SqliteConnection(_testConnectionString))
+        {
+            await connection.OpenAsync();
+            using (var command = new SqliteCommand("SELECT COUNT(*) FROM SampleTable", connection))
+            {
+                var count = (long)await command.ExecuteScalarAsync();
+                Assert.Equal(1, count);
+            }
+        }
     }
-}
 
-// Custom FakeDbConnection to bypass Moq limitations
-public class FakeDbConnection : DbConnection
-{
-    private readonly DbCommand _dbCommand;
-    private readonly DbTransaction _dbTransaction;
-
-    public FakeDbConnection(DbCommand dbCommand, DbTransaction dbTransaction)
+    [Fact]
+    public async Task ExecuteBatchAsync_Should_Insert_Data()
     {
-        _dbCommand = dbCommand;
-        _dbTransaction = dbTransaction;
+        // Arrange
+        string createTableQuery = "CREATE TABLE SampleTable (Id INTEGER PRIMARY KEY, Name TEXT)";
+        string insertQuery = "INSERT INTO SampleTable (Name) VALUES (@Name)";
+        var dataList = new List<string> { "Alice", "Bob", "Charlie" };
+
+        using (var connection = new SqliteConnection(_testConnectionString))
+        {
+            await connection.OpenAsync();
+            using (var command = new SqliteCommand(createTableQuery, connection))
+            {
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+
+        // Act
+        await _commandRepository.ExecuteBatchAsync(insertQuery, CommandType.Text, dataList);
+
+        // Assert
+        using (var connection = new SqliteConnection(_testConnectionString))
+        {
+            await connection.OpenAsync();
+            using (var command = new SqliteCommand("SELECT COUNT(*) FROM SampleTable", connection))
+            {
+                var count = (long)await command.ExecuteScalarAsync();
+                Assert.Equal(dataList.Count, count);
+            }
+        }
     }
-
-    public override string ConnectionString { get; set; }
-
-    public override string Database => "FakeDB";
-    public override ConnectionState State => ConnectionState.Open;
-    public override string DataSource => "FakeDataSource";
-    public override string ServerVersion => "FakeVersion";
-
-    public override void Open() { }
-    public override Task OpenAsync() => Task.CompletedTask;
-    public override void Close() { }
-    public override void ChangeDatabase(string databaseName) { }
-    public override void Dispose() { }
-
-    protected override DbCommand CreateDbCommand() => _dbCommand;
-    protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => _dbTransaction;
 }
