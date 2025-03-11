@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.Reflection;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
@@ -13,9 +14,9 @@ using GuardAgainstLib;
 public class CommandRepositoryTests
 {
     private readonly Mock<IConfiguration> _mockConfig;
-    private readonly Mock<SqlConnection> _mockSqlConnection;
-    private readonly Mock<SqlCommand> _mockSqlCommand;
-    private readonly Mock<SqlTransaction> _mockTransaction;
+    private readonly Mock<DbConnection> _mockDbConnection;
+    private readonly Mock<DbCommand> _mockDbCommand;
+    private readonly Mock<DbTransaction> _mockDbTransaction;
     private readonly CommandRepository _commandRepository;
     private readonly string _validConnectionString = "Server=myServer;Database=myDB;User Id=myUser;Password=myPassword;";
 
@@ -24,9 +25,9 @@ public class CommandRepositoryTests
         _mockConfig = new Mock<IConfiguration>();
         _mockConfig.Setup(c => c["ConnectionStrings:MobilityViolenceWriteDB"]).Returns(_validConnectionString);
 
-        _mockSqlConnection = new Mock<SqlConnection>();
-        _mockSqlCommand = new Mock<SqlCommand>();
-        _mockTransaction = new Mock<SqlTransaction>();
+        _mockDbConnection = new Mock<DbConnection>(); // Use DbConnection instead of SqlConnection
+        _mockDbCommand = new Mock<DbCommand>();
+        _mockDbTransaction = new Mock<DbTransaction>();
 
         _commandRepository = new CommandRepository(_mockConfig.Object);
     }
@@ -43,15 +44,15 @@ public class CommandRepositoryTests
     {
         // Arrange
         var commandText = "INSERT INTO SampleTable VALUES ('test')";
-        _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
-        _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ThrowsAsync(CreateSqlException());
+        _mockDbConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
+        _mockDbConnection.Setup(c => c.BeginTransaction()).Returns(_mockDbTransaction.Object);
+        _mockDbCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ThrowsAsync(CreateSqlException());
 
         // Act
         await _commandRepository.ExecuteAsync<object>(commandText, CommandType.Text);
 
         // Assert
-        _mockTransaction.Verify(t => t.Rollback(), Times.Once);
+        _mockDbTransaction.Verify(t => t.Rollback(), Times.Once);
     }
 
     [Fact]
@@ -62,9 +63,9 @@ public class CommandRepositoryTests
         var dataList = new List<string> { "value1", "value2", "value3" };
         int retryCount = 0;
 
-        _mockSqlConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
-        _mockSqlConnection.Setup(c => c.BeginTransaction()).Returns(_mockTransaction.Object);
-        _mockSqlCommand.Setup(c => c.ExecuteNonQueryAsync()).ReturnsAsync(() =>
+        _mockDbConnection.Setup(c => c.OpenAsync()).Returns(Task.CompletedTask);
+        _mockDbConnection.Setup(c => c.BeginTransaction()).Returns(_mockDbTransaction.Object);
+        _mockDbCommand.Setup(c => c.ExecuteNonQueryAsync(default)).ReturnsAsync(() =>
         {
             retryCount++;
             if (retryCount < 3) throw CreateSqlException();
@@ -75,7 +76,7 @@ public class CommandRepositoryTests
         await _commandRepository.ExecuteBatchAsync(commandText, CommandType.Text, dataList);
 
         // Assert
-        _mockTransaction.Verify(t => t.Rollback(), Times.Exactly(2)); // Rolled back twice before success
-        _mockTransaction.Verify(t => t.Commit(), Times.Once); // Committed on final retry
+        _mockDbTransaction.Verify(t => t.Rollback(), Times.Exactly(2)); // Rolled back twice before success
+        _mockDbTransaction.Verify(t => t.Commit(), Times.Once); // Committed on final retry
     }
 }
