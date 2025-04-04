@@ -1,0 +1,4 @@
+=IF(COUNTIFS($B$2:$B$100, $B2)=1, 1,  
+   IF(H2="N/A", COUNTIFS($B$2:$B$100, $B2, $H$2:$H$100, "<>Other"),  
+   IF(H2="Other", COUNTIFS($B$2:$B$100, $B2),  
+   RANK(H2, FILTER($H$2:$H$100, $B$2:$B$100=B2), 0))))
