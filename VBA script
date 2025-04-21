@@ -1,26 +1,33 @@
-Sub UnmergeAndFillSelectedRange()
-    Dim targetRange As Range
-    Dim cell As Range
-    Dim area As Range
+Sub UnmergeInChunks()
+    Dim ws As Worksheet
+    Dim chunkSize As Long: chunkSize = 10000
+    Dim lastRow As Long, startRow As Long, endRow As Long
+    Dim cell As Range, area As Range
     Dim val As Variant
-
-    ' Define the specific range you want to work with
-    Set targetRange = Selection
+    
+    Set ws = ActiveSheet
+    lastRow = ws.UsedRange.Rows(ws.UsedRange.Rows.Count).Row
 
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
 
-    For Each cell In targetRange
-        If cell.MergeCells Then
-            Set area = cell.MergeArea
-            val = area.Cells(1, 1).Value
-            area.UnMerge
-            area.Value = val
-        End If
-    Next cell
+    For startRow = 1 To lastRow Step chunkSize
+        endRow = Application.Min(startRow + chunkSize - 1, lastRow)
+        
+        For Each cell In ws.Range("A" & startRow & ":Z" & endRow)
+            If cell.MergeCells Then
+                Set area = cell.MergeArea
+                val = area.Cells(1, 1).Value
+                area.UnMerge
+                area.Value = val
+            End If
+        Next cell
+
+        DoEvents ' Allows Excel to remain responsive
+    Next startRow
 
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
 
-    MsgBox "Done with selected range."
+    MsgBox "Done processing in chunks!"
 End Sub
