@@ -1,10 +1,13 @@
-Sub UnmergeInChunks()
+Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long) ' Only for 64-bit Excel
+
+Sub UnmergeInChunksWithPause()
     Dim ws As Worksheet
     Dim chunkSize As Long: chunkSize = 10000
     Dim lastRow As Long, startRow As Long, endRow As Long
     Dim cell As Range, area As Range
     Dim val As Variant
-    
+    Dim chunkCount As Long: chunkCount = 0
+
     Set ws = ActiveSheet
     lastRow = ws.UsedRange.Rows(ws.UsedRange.Rows.Count).Row
 
@@ -23,11 +26,18 @@ Sub UnmergeInChunks()
             End If
         Next cell
 
-        DoEvents ' Allows Excel to remain responsive
+        chunkCount = chunkCount + 1
+        Application.StatusBar = "Processed chunk " & chunkCount & " (" & startRow & " to " & endRow & ")"
+        
+        ' Pause for 2 seconds
+        Sleep 2000 ' milliseconds
+
+        DoEvents ' Keep Excel responsive
     Next startRow
 
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
+    Application.StatusBar = False
 
-    MsgBox "Done processing in chunks!"
+    MsgBox "Done processing all chunks!"
 End Sub
