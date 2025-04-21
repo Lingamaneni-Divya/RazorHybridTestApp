@@ -1,27 +1,26 @@
-Sub UnmergeAndFillValues()
-    Dim rng As Range
+Sub UnmergeAndFillSelectedRange()
+    Dim targetRange As Range
     Dim cell As Range
-    Dim ws As Worksheet
+    Dim area As Range
+    Dim val As Variant
+
+    ' Define the specific range you want to work with
+    Set targetRange = Selection
 
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
 
-    For Each ws In ActiveWorkbook.Worksheets
-        Set rng = ws.UsedRange
-
-        For Each cell In rng
-            If cell.MergeCells Then
-                With cell.MergeArea
-                    cellValue = cell.Value
-                    .UnMerge
-                    .Value = cellValue
-                End With
-            End If
-        Next cell
-    Next ws
+    For Each cell In targetRange
+        If cell.MergeCells Then
+            Set area = cell.MergeArea
+            val = area.Cells(1, 1).Value
+            area.UnMerge
+            area.Value = val
+        End If
+    Next cell
 
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
 
-    MsgBox "All merged cells have been unmerged and values filled.", vbInformation
+    MsgBox "Done with selected range."
 End Sub
